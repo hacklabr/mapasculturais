@@ -19,6 +19,11 @@ abstract class AssetManager{
         $this->config = $config;
     }
 
+    function reset() {
+        $this->_enqueuedScripts['components'] = [];
+        $this->_enqueuedStyles['components'] = [];
+    }
+
 
     function enqueueScript($group, $script_name, $script_filename, array $dependences = []){
         if(!key_exists($group, $this->_enqueuedScripts))

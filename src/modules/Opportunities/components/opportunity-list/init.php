@@ -1,12 +1,13 @@
 <?php
+$app->log->debug(print_r(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS), true));
 $entity = $this->controller->requestedEntity;
 $relatedOpportunities = $entity->getOpportunities();
 
-function orderEntities($a, $b) {
+$orderEntities = function ($a, $b) {
     return $a->registrationTo <=> $b->registrationTo;
-}
+};
 
-usort($relatedOpportunities, 'orderEntities');
+usort($relatedOpportunities, $orderEntities);
 
 $opportunities = [];
 

@@ -43,6 +43,7 @@ use Monolog\Handler;
 use Monolog\Level;
 use Monolog\Logger;
 
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface as ResponseInterface;
 use Psr\Log\InvalidArgumentException as LogInvalidArgumentException;
 use Respect\Validation\Factory as RespectorValidationFactory;
@@ -461,12 +462,22 @@ class App {
      * @throws TransactionRequiredException 
      * @throws WorkflowRequest 
      */
-    public function run() {
+    public function run(?ServerRequestInterface $request = null) {
         $this->applyHookBoundTo($this, 'mapasculturais.run:before');
-        $this->slim->run();
+        $this->slim->run($request);
         $this->persistPCachePendingQueue();
         $this->applyHookBoundTo($this, 'mapasculturais.run:after');
         $this->applyHookBoundTo($this, 'slim.after');
+    }
+
+
+    public function handle(ServerRequestInterface $request): ResponseInterface {
+        $this->applyHookBoundTo($this, 'mapasculturais.run:before');
+        $response = $this->slim->handle($request);
+        $this->persistPCachePendingQueue();
+        $this->applyHookBoundTo($this, 'mapasculturais.run:after');
+        $this->applyHookBoundTo($this, 'slim.after');
+        return $response;
     }
 
     /**
@@ -625,7 +636,8 @@ class App {
         $this->mscache = new Cache($this->config['app.mscache']);
         $this->mscache->setNamespace('MS');
         
-        $rcache_adapter = new \Symfony\Component\Cache\Adapter\ArrayAdapter(10000, false, 100000, 10000);
+        $rcache_adapter = new \Symfony\Component\Cache\Adapter\NullAdapter;
+
         $this->rcache = new Cache($rcache_adapter);
     }
 
@@ -706,16 +718,20 @@ class App {
         
         // obtaining the entity manager
         $this->em = new EntityManager($connection, $doctrine_config);
+        try{
+            DoctrineMappings\Types\Frequency::register();
+            DoctrineMappings\Types\Point::register();
+            DoctrineMappings\Types\Geography::register();
+            DoctrineMappings\Types\Geometry::register();
 
-        DoctrineMappings\Types\Frequency::register();
-        DoctrineMappings\Types\Point::register();
-        DoctrineMappings\Types\Geography::register();
-        DoctrineMappings\Types\Geometry::register();
+            \Acelaya\Doctrine\Type\PhpEnumType::registerEnumTypes([
+                DoctrineEnumTypes\ObjectType::getTypeName() => DoctrineEnumTypes\ObjectType::class,
+                DoctrineEnumTypes\PermissionAction::getTypeName() => DoctrineEnumTypes\PermissionAction::class
+            ]);
+        } catch (Exception $e) {
+            // throw new RuntimeException('Could not connect to the database. Please check your configuration.');
+        }
 
-        \Acelaya\Doctrine\Type\PhpEnumType::registerEnumTypes([
-            DoctrineEnumTypes\ObjectType::getTypeName() => DoctrineEnumTypes\ObjectType::class,
-            DoctrineEnumTypes\PermissionAction::getTypeName() => DoctrineEnumTypes\PermissionAction::class
-        ]);
 
         $platform = $this->em->getConnection()->getDatabasePlatform();
 
@@ -785,7 +801,7 @@ class App {
      * Inicializa a instância do tema
      * @return void 
      */
-    protected function _initTheme() {
+    function _initTheme() {
 
         if($this->subsite){
             $this->cache->setNamespace($this->config['app.cache.namespace'] . ':' . $this->subsite->id);
@@ -924,7 +940,7 @@ class App {
      * Inicializa o gerenciador de rotas
      * @return void 
      */
-    protected function _initRouteManager() {
+    function _initRouteManager() {
         $this->_routesManager = new RoutesManager($this->config['routes'] ?? []);
     }
 

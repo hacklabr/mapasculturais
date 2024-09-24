@@ -43,10 +43,7 @@ class Module extends \MapasCulturais\Module {
             $app->view->assetManager->publishFolder('js/vue-init/', 'js/vue-init/');
             $app->view->assetManager->publishFolder('js/media-query/', 'js/media-query/');
             
-            
-            if (isset($app->components->templates)) {
-                $app->components->templates = [];
-            }
+            $app->components->templates = [];
             
             // Importa componentes globais
             $this->import('
@@ -101,6 +98,13 @@ class Module extends \MapasCulturais\Module {
             }
 
             $this->jsObject['enabledEntities'] = $enabled_entities;
+
+            if($component_init_files = $this->componentInitFiles) {
+                foreach($component_init_files as $init_file) {
+                    $app->log->debug("importing component init file $init_file");
+                    include $init_file;
+                }
+            }
         }); 
 
         $app->hook('mapas.printJsObject:after', function () use($app) {
@@ -187,14 +191,9 @@ class Module extends \MapasCulturais\Module {
                 $this->importedComponents = [];
             }
 
-            $init_file = $this->resolveFilename("components/{$component}", 'init.php');
-
-            if ($init_file) {
-                $app->hook('mapas.printJsObject:before', function () use($init_file, $app) {
-                    include $init_file;
-                });
+            if (!$this->componentInitFiles) {
+                $this->componentInitFiles = [];
             }
-
 
             if(preg_match('#[ ,\n]+#', $component) && ($components = preg_split('#[ ,\n]+#', $component))) {
                 foreach ($components as $component) {
@@ -209,6 +208,12 @@ class Module extends \MapasCulturais\Module {
             $imported_components = $this->importedComponents;
             $imported_components[] = $component;
             $this->importedComponents = $imported_components;
+
+            $component_init_files = $this->componentInitFiles;
+            if($init_file = $this->resolveFilename("components/{$component}", 'init.php')) {
+                $component_init_files[] = $init_file;
+            }
+            $this->componentInitFiles = $component_init_files;
             
             if ($app->config['app.log.components']) {
                 $app->log->debug("importing component {$component}");

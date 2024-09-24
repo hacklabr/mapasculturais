@@ -108,23 +108,7 @@ abstract class Theme {
         $this->bodyClasses = new \ArrayObject;
         $this->bodyProperties = new \ArrayObject;
 
-        $this->jsObject = new \ArrayObject;
-        $this->jsObject['baseURL'] = $app->baseUrl;
-        $this->jsObject['assetURL'] = $app->assetUrl;
-        $this->jsObject['maxUploadSize'] = $app->getMaxUploadSize($useSuffix=false);
-        $this->jsObject['maxUploadSizeFormatted'] = $app->getMaxUploadSize();
-        $this->jsObject['EntitiesDescription'] = [];
-        $this->jsObject['config'] = [
-            'locale' => str_replace('_', '-', $app->config['app.lcode']),
-            'timezone' => date_default_timezone_get(),
-            'currency' => $app->config['app.currency']
-        ];
-        $this->jsObject['routes'] = $app->config['routes'];
-        
-        $app->hook('app.init:after', function(){
-            $this->view->jsObject['userId'] = $this->user->is('guest') ? null : $this->user->id;
-            $this->view->jsObject['user'] = $this->user;
-        });
+        $this->initJsObject();
 
         $app->hook('app.register', function() use($app){
             $def = new Definitions\Metadata('sentNotification', ['label' => 'Notificação enviada', 'type' => 'boolean']);
@@ -143,6 +127,9 @@ abstract class Theme {
 
                 $this->jsObject['request']['id'] = $app->view->controller->data['id'] ?? null;
             }
+
+            $this->jsObject['userId'] = $app->user->is('guest') ? null : $app->user->id;
+            $this->jsObject['user'] = $app->user;
           
             $this->jsObject['EntitiesDescription'] = [
                 "user"          => Entities\User::getPropertiesMetadata(),
@@ -228,6 +215,38 @@ abstract class Theme {
         $app->applyHookBoundTo($this, 'theme.init:before');
         $this->_init();
         $app->applyHookBoundTo($this, 'theme.init:after');
+    }
+
+    function reset() {
+        $this->documentMeta = new \ArrayObject;
+        $this->bodyClasses = new \ArrayObject;
+        $this->bodyProperties = new \ArrayObject;
+
+
+        $this->importedComponents = [];
+        $this->componentInitFiles = [];
+
+        $this->initJsObject();
+
+        $this->assetManager->reset();
+    }
+
+    function initJsObject() {
+        $app = App::i();
+        
+        $this->jsObject = new \ArrayObject;
+        $this->jsObject['baseURL'] = $app->baseUrl;
+        $this->jsObject['assetURL'] = $app->assetUrl;
+        $this->jsObject['maxUploadSize'] = $app->getMaxUploadSize($useSuffix=false);
+        $this->jsObject['maxUploadSizeFormatted'] = $app->getMaxUploadSize();
+        $this->jsObject['EntitiesDescription'] = [];
+        $this->jsObject['config'] = [
+            'locale' => str_replace('_', '-', $app->config['app.lcode']),
+            'timezone' => date_default_timezone_get(),
+            'currency' => $app->config['app.currency']
+        ];
+        $this->jsObject['routes'] = $app->config['routes'];
+        
     }
 
     

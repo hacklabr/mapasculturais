@@ -109,8 +109,6 @@ trait ControllerAPI{
     }
 
     public function apiAddHeaderMetadata($qdata, $data, $count){
-        if (headers_sent())
-            return;
         $count = (int) $count;
         $response_meta = [
             'count' => $count,
@@ -122,8 +120,8 @@ trait ControllerAPI{
         ];
 
         $this->_lastQueryMetadata = (object) $response_meta;
-
-        header('API-Metadata: ' . json_encode($response_meta));
+        $app = App::i();
+        $app->response = $app->response->withHeader('API-Metadata', json_encode($response_meta));
     }
 
     function getLastQueryMetadata(){
