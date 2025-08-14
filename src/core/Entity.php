@@ -339,6 +339,81 @@ abstract class Entity implements \JsonSerializable{
         return $collection->matching($criteria);
     }
 
+    
+    protected static function alias(string $prefix): string {
+        $sufix = substr(base_convert(uniqid(), 16, 36), 6);
+        return "{$prefix}_{$sufix}";
+    }
+
+    public static function permissionDQL__default(): array 
+    {
+        $dqls = [];
+        $class = self::getClassName();
+
+        if (property_exists($class, 'user')) {
+            $e = self::alias('e');
+            $dqls[] = "SELECT $e.id FROM $class $e WHERE $e.user = :USER";
+        }
+
+        if (self::usesOwnerAgent()) {
+            $e = self::alias('e');
+            $o = self::alias('o');
+            $dqls[] = "SELECT $e.id FROM $class $e JOIN $e.owner $o WHERE $o.user = :USER";
+        }
+
+        if (self::usesAgentRelation()) {
+            $e = self::alias('e');
+            $ar = self::alias('ar');
+            $a = self::alias('a');
+
+            $dqls[] = "SELECT $e.id FROM $class $e JOIN $e.__agentRelations $ar JOIN $ar.agent $a WITH $ar.hasControl = true WHERE $a.user = :USER";
+        }
+
+        return $dqls;
+    }
+
+    public static function permissionDQL__admins(array $roles = ['admin', 'superAdmin', 'saasAdmin', 'saasSuperAdmin']): array
+    {
+        $dqls = [];
+        $class = self::getClassName();
+
+        $e = self::alias('e');
+        $r = self::alias('r');
+
+    }
+
+    function canDo(string $action, ?UserInterface $user = null) {
+        $class = $this->getClassName();
+
+        $method = "permissionDQL_" . $action;
+
+        if(!method_exists($this, $method)) {
+            $method = 'permissionDQL__default';
+        }
+
+        $dql = "SELECT count(e.id) FROM $class e WHERE e.id = :id";
+        
+        $dqls = $this->$method();
+        if ($dqls) {
+            $dqls = array_map(fn($_dql) => "e.id IN ($_dql)", $dqls);
+            $imploded = implode(" OR ", $dqls);
+            $dql .= " AND ($imploded)";
+        }
+
+        $app = App::i();
+
+        $query = $app->em->createQuery($dql);
+        $user = $user ?: $app->user;
+
+        $query->setParameters([
+            'id' => $this->id,
+            'USER' => $user->id
+        ]);
+
+        $found = $query->getSingleScalarResult();
+        return (bool) $found;
+    }
+
     protected function genericPermissionVerification($user){
         
         if($user->is('guest'))
