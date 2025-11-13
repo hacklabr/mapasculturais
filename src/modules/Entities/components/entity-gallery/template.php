@@ -21,7 +21,7 @@ $this->import('
         <div class="entity-gallery__list--image" v-for="(img, index) in images">
             <div>
                 <div @click="open" class="entity-gallery__list--image-img" >
-                    <img @click="openImg(index)" :src="img.transformations.galleryFull?.url" :imgId="img.id" :title="img.description"/>
+                    <img @click="openImg(index)" :src="img.transformations.galleryFull?.url || img.url" :imgId="img.id" :title="img.description"/>
                 </div>    
                 <p @click="openImg(index); open()" class="entity-gallery__list--image-label"> {{img.description}} </p>
             </div>
