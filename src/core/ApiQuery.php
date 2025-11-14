@@ -1144,7 +1144,7 @@ class ApiQuery {
                 $where_status = "(e.status > 0 OR e.status = -1 OR e.status = -20 $this->private_pcache_join)";
             }
             else {
-                $where_status = "e.status > 0 $this->private_pcache_join";
+                $where_status = "(e.status > 0 $this->private_pcache_join)";
             }
             $where = $where ? "($where) AND $where_status" : $where_status;
         }
