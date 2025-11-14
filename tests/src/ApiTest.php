@@ -16,7 +16,6 @@ class ApiTest extends TestCase
 
     function testInMultiselectMetadata()
     {
-        $this->app->disableAccessControl();
         /* valores válidos para pessoaDeficiente:
                 - Nenhuma
                 - Auditiva
@@ -36,13 +35,14 @@ class ApiTest extends TestCase
             ['Intelectual']
         ];
 
-
+        $this->app->disableAccessControl();
         foreach ($values as $i => $vs) {
             $user = $this->userDirector->createUser();
             $profile = $user->profile;
             $profile->pessoaDeficiente = $vs;
             $profile->save(true);
         }
+        $this->app->enableAccessControl();
 
         $this->processPCache();
 
@@ -73,14 +73,10 @@ class ApiTest extends TestCase
         foreach ($result as $agent) {
             $this->assertContainsOneOf(['Auditiva', 'Múltipla'], $agent['pessoaDeficiente'], 'Certificando que todos os resultados da consulta na api, quanto utilizado o operador IN em metadados de seleção múltipla, contém ao menos um dos termo buscados - busca por 2 termos');
         }
-
-        $this->app->enableAccessControl();
     }
 
     function testApiKeywordWithSingleQuota()
     {
-        $this->app->disableAccessControl();
-
         $admin = $this->userDirector->createUser('admin');
         $this->login($admin);
 
@@ -137,14 +133,10 @@ class ApiTest extends TestCase
 
         $result = $query->find();
         $this->assertEquals(1, count($result), 'Certificando que a busca na api por palavra-chave simples retorna o número correto de resultados.');
-
-        $this->app->enableAccessControl();
     }
 
     function testAgentApiKeywordCNPJ()
     {
-        $this->app->disableAccessControl();
-
         $admin = $this->userDirector->createUser('admin');
         $this->login($admin);
 
@@ -204,8 +196,6 @@ class ApiTest extends TestCase
 
     function testAgentApiKeywordTAG()
     {
-        $this->app->disableAccessControl();
-
         $admin = $this->userDirector->createUser('admin');
         $this->login($admin);
 
