@@ -62,12 +62,42 @@ app.component('entity-actions', {
     },
     
     methods: {
+        async makePrivate(modal) {
+            const updateMethod = $MAPAS.config['entity-actions']['updateMethod'];
+
+            try {
+                await this.entity.save({updateMethod});
+                await this.entity.validate();
+                await this.entity.makePrivate();
+                if(modal) {
+                    modal.close();
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        },
+
+        async publish(modal) {
+            const updateMethod = $MAPAS.config['entity-actions']['updateMethod'];
+
+            try {
+                await this.entity.save({updateMethod});
+                await this.entity.validate();
+                await this.entity.publish();
+                if(modal) {
+                    modal.close();
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        },
         save() {
             const event = new Event("entitySave");
 
             const updateMethod = $MAPAS.config['entity-actions']['updateMethod'];
 
             this.entity.save({updateMethod}).then(() => {
+                this.entity.validate();
                 window.dispatchEvent(event);
             });
         },

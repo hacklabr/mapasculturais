@@ -364,6 +364,7 @@ module.controller('RegistrationConfigurationsController', ['$scope', '$rootScope
         conditionalValue : null,
         registrationRanges : [],
         proponentTypes : [],
+        allowedFileTypes: [],
         step: MapasCulturais.step?.id ?? null,
     };
 
@@ -781,6 +782,7 @@ module.controller('RegistrationConfigurationsController', ['$scope', '$rootScope
                 conditionalValue: model.conditionalValue,
                 registrationRanges: model.registrationRanges.length ? model.registrationRanges : '',
                 proponentTypes: model.proponentTypes.length ? model.proponentTypes : '',
+                allowedFileTypes: model.allowedFileTypes && model.allowedFileTypes.length ? model.allowedFileTypes : '',
             };
 
             if(data.fieldType == "section"){
@@ -2064,6 +2066,36 @@ module.controller('RegistrationFieldsController', ['$scope', '$rootScope', '$int
         }
 
         return result;
+    }
+
+    $scope.formatPersonArrayField = function(value) {
+        if (!value) {
+            return '';
+        }
+
+        if (Array.isArray(value)) {
+            return value.join(', ');
+        }
+
+        if (typeof value === 'string' && value.trim().startsWith('[')) {
+            try {
+                const parsed = JSON.parse(value);
+                if (Array.isArray(parsed)) {
+                    return parsed.join(', ');
+                }
+            } catch (e) {
+                return value;
+            }
+        }
+
+        if (typeof value === 'object') {
+            const values = Object.keys(value).filter(k => value[k]);
+            if (values.length > 0) {
+                return values.join(', ');
+            }
+        }
+
+        return value;
     }
 
 }]);

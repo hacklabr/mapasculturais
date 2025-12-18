@@ -34,10 +34,11 @@ use MapasCulturais\Traits;
 #[ORM\Entity(repositoryClass: "MapasCulturais\Repositories\User")]
 #[ORM\HasLifecycleCallbacks]
 class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterface{
-    use Traits\EntityMetadata,
-        Traits\EntitySoftDelete,
+    use Traits\EntityFiles,
+        Traits\EntityMetadata,
         Traits\EntityPermissionCache,
-        Traits\EntityFiles;
+        Traits\EntityRevision,
+        Traits\EntitySoftDelete;
 
     const STATUS_ENABLED = 1;
 
@@ -91,7 +92,7 @@ class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterfa
     /**
      * @var \MapasCulturais\Entities\Role[] User Roles
      */
-    #[ORM\OneToMany(targetEntity: "MapasCulturais\Entities\Role", mappedBy: "user", cascade: ["remove"], orphanRemoval: true, fetch: "EAGER")]
+    #[ORM\OneToMany(targetEntity: "MapasCulturais\Entities\Role", mappedBy: "user", cascade: ["remove"], orphanRemoval: true)]
     protected $roles;
 
     #[ORM\OneToMany(targetEntity: "MapasCulturais\Entities\Agent", mappedBy: "user", cascade: ["remove"], orphanRemoval: true, fetch: "LAZY")]
@@ -119,6 +120,14 @@ class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterfa
 
     protected $_isDeleting = false;
 
+    static function getPublicApiFields(): array 
+    {
+        $public_fields = ['id','profile','currentUserPermissions','status'];
+
+        return $public_fields;
+    }
+
+
     static function getValidations() {
         $app = App::i();
         $validations = [
@@ -140,6 +149,15 @@ class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterfa
 
         $this->agents = new \Doctrine\Common\Collections\ArrayCollection();
         $this->lastLoginTimestamp = new \DateTime;
+    }
+
+    public function getRevisionData()
+    {
+        $roles = [];
+        foreach($this->roles as $role) {
+            $roles[] = $role->name;
+        }
+        return ['roles' => $roles];
     }
 
     public static function getPropertiesMetadata($include_column_name = false){
@@ -213,6 +231,9 @@ class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterfa
             $role->save(true);
 
             $this->roles[] = $role;
+
+            $this->_newModifiedRevision(i::__("Role adcionado: ") . $role_name);
+
             return true;
         }
 
@@ -241,6 +262,7 @@ class User extends \MapasCulturais\Entity implements \MapasCulturais\UserInterfa
         foreach($this->roles as $role){
             if($role->name == $role_name && $role->subsiteId == $subsite_id){
                 $role->delete(true);
+                $this->_newModifiedRevision(i::__("Role removido: ") . $role_name);
                 return true;
             }
         }
