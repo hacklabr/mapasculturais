@@ -23,8 +23,8 @@ $this->import('
     opportunity-phases-timeline
     registration-print
     registration-workplan-form
-    v1-embed-tool
     registration-evaluation-tab
+    registration-field-view
 ');
 
 $this->breadcrumb = [
@@ -303,7 +303,7 @@ $today = new DateTime();
                                     <?php endif ?>
                                 <?php else: ?>
                                     <?php $this->applyTemplateHook("registration-form-view", 'before', [$phase]) ?>
-                                    <v1-embed-tool route="registrationview" :id="<?=$phase->id?>"></v1-embed-tool>
+                                    <registration-field-view :registration="entity" :phase-id="<?= (int) $phase->id ?>"></registration-field-view>
                                     <?php if ($opportunity->isReportingPhase && $opportunity->parent->enableWorkplan): ?>
                                         <registration-workplan-form :phase-id="<?= $opportunity->id ?>"></registration-workplan-form>
                                     <?php endif; ?>
