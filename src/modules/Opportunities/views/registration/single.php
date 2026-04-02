@@ -44,6 +44,55 @@ if($all_registrations = $app->repo('Registration')->findBy(['number' => $entity-
         $result[$reg->id] = $em ? $em->shouldDisplayEvaluationResults($reg) : false;
     }
 }
+
+$ficha_phases = [];
+$ficha_phase_ids = [];
+$phase_cursor = $entity;
+while ($phase_cursor) {
+    $ficha_phases[] = $phase_cursor;
+    $ficha_phase_ids[(int) $phase_cursor->id] = true;
+    $phase_cursor = $phase_cursor->nextPhase;
+}
+
+if (!empty($all_registrations)) {
+    foreach ($all_registrations as $reg) {
+        $reg_id = (int) $reg->id;
+        if (!isset($ficha_phase_ids[$reg_id])) {
+            $ficha_phases[] = $reg;
+            $ficha_phase_ids[$reg_id] = true;
+        }
+    }
+}
+
+$phase_order = [];
+$phase_order_cursor = $entity;
+$phase_order_index = 0;
+while ($phase_order_cursor) {
+    $phase_order[(int) $phase_order_cursor->opportunity->id] = $phase_order_index++;
+    $phase_order_cursor = $phase_order_cursor->nextPhase;
+}
+
+usort($ficha_phases, function($a, $b) use ($phase_order) {
+    $a_opp = $a->opportunity;
+    $b_opp = $b->opportunity;
+
+    $a_anchor = ($a_opp->isAppealPhase && $a_opp->parent) ? $a_opp->parent : $a_opp;
+    $b_anchor = ($b_opp->isAppealPhase && $b_opp->parent) ? $b_opp->parent : $b_opp;
+
+    $a_anchor_order = $phase_order[(int) $a_anchor->id] ?? PHP_INT_MAX;
+    $b_anchor_order = $phase_order[(int) $b_anchor->id] ?? PHP_INT_MAX;
+    if ($a_anchor_order !== $b_anchor_order) {
+        return $a_anchor_order <=> $b_anchor_order;
+    }
+
+    $a_is_appeal = $a_opp->isAppealPhase ? 1 : 0;
+    $b_is_appeal = $b_opp->isAppealPhase ? 1 : 0;
+    if ($a_is_appeal !== $b_is_appeal) {
+        return $a_is_appeal <=> $b_is_appeal;
+    }
+
+    return (int) $a->id <=> (int) $b->id;
+});
     
 $this->jsObject['config']['registrationResults']['shouldDisplayEvaluationResults'] = $result;
 
@@ -266,8 +315,7 @@ $today = new DateTime();
                     </template>
                 </mc-card>
 
-                <?php $phase = $entity;
-                while($phase): $opportunity = $phase->opportunity;?>
+                <?php foreach($ficha_phases as $phase): $opportunity = $phase->opportunity;?>
                     <?php if($opportunity->isDataCollection && $phase->canUser('view')):?>
                         <?php if($opportunity->isFirstPhase):?>
                             <h2><?= i::__('Inscrição') ?></h2>
@@ -284,6 +332,12 @@ $today = new DateTime();
                                     <a class="button button--primary" href="<?=$app->createUrl("registration", "edit", [$phase->id])?>"><?= i::__('Preencher formulário') ?></a>
                                 </div>
                             </div>
+                            <?php $this->applyTemplateHook("registration-form-view", 'before', [$phase]) ?>
+                            <registration-field-view :registration="entity" :phase-id="<?= (int) $phase->id ?>"></registration-field-view>
+                            <?php if ($opportunity->isReportingPhase && $opportunity->parent->enableWorkplan): ?>
+                                <registration-workplan-form :phase-id="<?= $opportunity->id ?>"></registration-workplan-form>
+                            <?php endif; ?>
+                            <?php $this->applyTemplateHook("registration-form-view", 'after', [$phase]) ?>
                             <?php else: ?>
                                 <?php if($phase->status === 0):?>
                                     <?php if($today > $opportunity->registrationTo):?>
@@ -301,6 +355,12 @@ $today = new DateTime();
                                             </div>
                                         </div>
                                     <?php endif ?>
+                                    <?php $this->applyTemplateHook("registration-form-view", 'before', [$phase]) ?>
+                                    <registration-field-view :registration="entity" :phase-id="<?= (int) $phase->id ?>"></registration-field-view>
+                                    <?php if ($opportunity->isReportingPhase && $opportunity->parent->enableWorkplan): ?>
+                                        <registration-workplan-form :phase-id="<?= $opportunity->id ?>"></registration-workplan-form>
+                                    <?php endif; ?>
+                                    <?php $this->applyTemplateHook("registration-form-view", 'after', [$phase]) ?>
                                 <?php else: ?>
                                     <?php $this->applyTemplateHook("registration-form-view", 'before', [$phase]) ?>
                                     <registration-field-view :registration="entity" :phase-id="<?= (int) $phase->id ?>"></registration-field-view>
@@ -313,8 +373,7 @@ $today = new DateTime();
                             
                         <?php endif ?>
                     <?php endif ?>
-                    <?php $phase = $phase->nextPhase; ?>
-                <?php endwhile ?>
+                <?php endforeach ?>
             </div>
         </mc-tab>
 
