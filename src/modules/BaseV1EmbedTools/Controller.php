@@ -48,25 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public Function GET_registrationformpreview(){
-        $app = App::i();
-
-        $this->entityClassName = "MapasCulturais\\Entities\\Registration";
-        $this->layout = "embedtools-registration";
-
-        $opportunity= $app->repo('Opportunity')->find($this->data['id']);
-        $opportunity->checkPermission('@control');
-
-        $registration = new $this->entityClassName;
-        $registration->id = -1;
-        $registration->preview = true;
-        $registration->opportunity = $opportunity;
-
-        $this->_requestedEntity = $registration;
-
-        $this->render("registration-form-preview",['entity' => $registration, 'preview' => true]);
-    }
-
     public function GET_sidebarleftevaluations()
     {
         $this->entityClassName = "MapasCulturais\\Entities\\Registration";
