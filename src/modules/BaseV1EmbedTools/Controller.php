@@ -48,14 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public Function GET_sopportlist()
-    {
-        $app = App::i();
-
-        $entity = $this->getEntityAndCheckPermission('support');
-        $this->render("registration-support",['entity' => $entity]);
-    }
-
     public function GET_supporteditview(){
         $app = App::i();
         $this->entityClassName = "MapasCulturais\\Entities\\Registration";
