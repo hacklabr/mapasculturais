@@ -48,25 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public function GET_supporteditview(){
-        $app = App::i();
-        $this->entityClassName = "MapasCulturais\\Entities\\Registration";
-        $this->layout = "embedtools-registration";
-        $entity = $this->getEntityAndCheckPermission('support');
-
-        $entity->registerFieldsMetadata();
-        $relation = $app->repo("AgentRelation")->findOneBy([
-            "agent" => $app->user->profile,
-            "objectId" => $entity->opportunity->id,
-            "group" => "@support"
-        ]);
-
-        $this->render("support--edit-view",[
-            'entity' => $entity,
-            "userAllowedFields" => ($relation->metadata["registrationPermissions"] ?? [])
-        ]);
-    }
-
     public Function GET_registrationformpreview(){
         $app = App::i();
 
