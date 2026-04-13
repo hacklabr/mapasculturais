@@ -29,13 +29,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("form-builder", ['entity' => $entity]);
     }
 
-    public function GET_registrationmanager()
-    {
-        $entity = $this->getEntityAndCheckPermission('@control');
-
-        $this->render("registration-manager", ['entity' => $entity]);
-    }
-
     public function GET_supportbuilder()
     {
         $entity = $this->getEntityAndCheckPermission('@control');
