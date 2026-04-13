@@ -48,14 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public function GET_registrationformedit() {
-        $this->entityClassName = "MapasCulturais\\Entities\\Registration";
-        $this->layout = "embedtools-registration";
-        $entity = $this->requestedEntity;
-
-        $this->render("registration-editable-field", ['entity' => $entity]);
-    }
-
     function getEntityAndCheckPermission($permission)
     {
         $app = App::i();
