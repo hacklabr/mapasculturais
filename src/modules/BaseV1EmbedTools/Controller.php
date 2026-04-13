@@ -29,21 +29,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("form-builder", ['entity' => $entity]);
     }
 
-    public function GET_opportunityresults()
-    {
-        $app = App::i();
-
-        if (!$entity = $this->requestedEntity) {
-            $app->pass();
-        }
-
-        if (!$entity->publishedRegistrations) {
-            $app->halt(403, i::__('Permissão negada'));
-        }
-
-        $this->render("opportunity-result", ['entity' => $entity]);
-    }
-
     public function GET_registrationform()
     {
         $this->entityClassName = "MapasCulturais\\Entities\\Registration";
