@@ -48,28 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public Function GET_evaluationlist()
-    {
-        $this->requireAuthentication();
-        $app = App::i();
-
-        $opportunity = $this->requestedEntity;
-
-        $user_id = $this->data['user'] ?? null;
-
-        if ($user_id == 'all'){
-            $opportunity->checkPermission('@control');
-            $this->render("evaluations-admin-list",['entity' => $opportunity]);
-
-        } else {
-            $valuer_user = $user_id ? $app->repo('User')->find($user_id) : $app->user;
-            if(!$app->user->equals($valuer_user)) {
-                $opportunity->checkPermission('@control');
-            }
-            $this->render("evaluations-evaluator-list",['entity' => $opportunity, 'valuer_user' => $valuer_user]);
-        }
-    }
-
     public Function GET_sopportlist()
     {
         $app = App::i();
