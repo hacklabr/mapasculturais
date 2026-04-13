@@ -48,12 +48,6 @@ class Controller extends \MapasCulturais\Controllers\Opportunity
         $this->render("report-manager",['entity' => $entity]);
     }
 
-    public Function GET_fieldsvisible()
-    {
-        $entity = $this->getEntityAndCheckPermission('@control');
-        $this->render("fields-visible",['entity' => $entity]);
-    }
-
     public Function GET_evaluationlist()
     {
         $this->requireAuthentication();
