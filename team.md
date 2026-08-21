@@ -7,12 +7,6 @@
 
 ## People
 
-### @rafaelchavesfreitas
-- **Name:** Rafael Chaves Freitas
-- **Role in the flow:** Product + Engineering + Delivery
-- **Seniority:** não informado
-- **Specialty:** não informado
-
 ### @erleibiazzio
 - **Name:** Erlei Biazzio
 - **Role in the flow:** Engineering + Delivery
@@ -45,5 +39,6 @@
 
 ## Fora do mapa
 
-Colaboradores do repositório sem papel atribuído no fluxo (decisão de 2026-08-17):
-`leopiccionia`, `carolinasouza0`, `everaldomatias`, `jacsonp`, `oseiashl`, `marinarcruz`.
+Colaboradores do repositório sem papel atribuído no fluxo:
+- decisão de 2026-08-17: `leopiccionia`, `carolinasouza0`, `everaldomatias`, `jacsonp`, `oseiashl`, `marinarcruz`.
+- decisão de 2026-08-21: `rafaelchavesfreitas`.
