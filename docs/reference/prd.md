@@ -144,6 +144,55 @@ Mudança de status/remoção de inscrição enfileira job `SyncPhaseRegistration
 #### RF-A29 — Fases de acompanhamento (monitoramento) e prestação final de informações
 **O mecanismo vivo** de acompanhamento pós-approvação: `POST projectmonitoring/reportingPhase` cria fase filha (`isReportingPhase`/`isFinalReportingPhase`) com EMC `continuous`; fases de monitoramento importam qualificados; a fase final de prestação importa os status 10 da última fase como rascunho para o proponente preencher; o workplan é editado durante o monitoramento via metadado-ponte `workplanProxy` e congelado em `workplanSnapshot` no envio. **CA:** aprovação + fase final de prestação → proponente recebe inscrição-rascunho; envio congela o snapshot e computa `goalStatuses`. **Evidência:** `ProjectMonitoring/Controller.php:10-63`; `ProjectMonitoring/Module.php:17-131, 204-229, 898-1070`; `OpportunityPhases/Module.php:1594-1696`. (Substitui funcionalmente a "prestação de contas" — ver §5.)
 
+#### RF-A30 — Correção de notas após deferimento de recurso
+Extensão da fase de recurso (RF-A15) para permitir que gestores designem corretores para ajustar **notas individuais de avaliadores (slots)** em inscrições cujo recurso foi deferido, sem reabrir a fase avaliativa principal.
+
+**Modelo por slot:** a unidade de correção é a `RegistrationEvaluation` de um avaliador específico em uma inscrição, não a nota consolidada da inscrição. Para cada slot a corrigir, o gestor designa **exatamente 1 corretor**, elegível entre:
+- o avaliador original daquele slot; ou
+- membro da Comissão de Recursos da fase de recurso.
+
+A correção persiste in-place na `RegistrationEvaluation` original, mantendo seu dono (`user`) inalterado. A consolidação da inscrição recalcula automaticamente a partir das N avaliações (incluindo as corrigidas). O histórico fica em `EntityRevision` (mensagem customizada identificando corretor e slot) e na tabela `registration_appeal_review` (fonte primária para telas e exportações).
+
+**CA verificáveis:**
+
+| # | Critério de aceitação |
+|---|----------------------|
+| CA-1 | Gestor com `@control` na oportunidade vê, na lista de inscritos, ação de designação de correção **apenas** para inscrições com recurso deferido. |
+| CA-2 | Modal de designação lista apenas as `RegistrationEvaluation` da fase principal daquela inscrição, uma por avaliador. |
+| CA-3 | Por slot, o gestor só pode designar como corretor: (a) o dono daquele slot; ou (b) membro da Comissão de Recursos. Avaliadores de outros slots da mesma inscrição são rejeitados. |
+| CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos. |
+| CA-5 | Corretor designado recebe notificação interna e e-mail informando a tarefa. |
+| CA-6 | Ambiente do corretor só expõe o slot designado (nunca as outras N-1 avaliações da mesma inscrição) e só os critérios liberados; parecer da Comissão só aparece se configurado. |
+| CA-7 | Corretor pode salvar rascunho e enviar definitivamente. Após envio, a edição é bloqueada. |
+| CA-8 | Ao enviar, a `RegistrationEvaluation` original é atualizada in-place, gera revisão com mensagem identificando corretor e slot, e a consolidação da inscrição é recalculada **apenas para aquela inscrição**. |
+| CA-9 | Se `correction_type = record`, a revisão e o registro são gravados, mas a nota oficial/consolidação não muda. |
+| CA-10 | Se `appealPhaseAffectsSync` estiver ativo, a alteração propaga para fases posteriores apenas para a inscrição afetada. |
+| CA-11 | Listas de inscritos, avaliações e exportações exibem: nota original do slot, nota corrigida do slot e diferença; na lista de inscritos exibe também a média original, média corrigida e diferença da inscrição. |
+| CA-12 | Proponente visualiza, quando liberado pelas regras de publicação: nota preliminar, abertura do recurso, análise do recurso, nota após correção (se houver) e nota final da fase. |
+| CA-13 | Gestor acompanha status individual de cada designação (designado / rascunho / enviado / reaberto), prazo e data de envio, podendo substituir corretor ou reabrir com novo prazo. |
+
+**Fora de escopo do MVP (fase 2):**
+- Métodos de avaliação além de `EvaluationMethodTechnical`.
+- Criação de novas oportunidades/fases.
+- Reabertura da fase principal ou de seus prazos.
+- Mais de um recurso por inscrição.
+- Alteração da regra de cálculo/consolidação dos métodos.
+- Envio de novos documentos pelo proponente durante a reavaliação.
+- Correção do typo `$this->nexPhase` em `EvaluationMethodTechnical/Module.php` (bug pré-existente, documentado em §6).
+
+**Riscos/lacunas de produto a declarar:**
+- R17 — **Elegibilidade por slot é o ponto mais fácil de implementar errado**: query naive por `registration_id` sem filtro por avaliador pode permitir que qualquer avaliador da inscrição corrija qualquer slot. O CA-3 deve ser coberto por teste de regressão explícito.
+- R18 — **Propagação para exportações**: spike obrigatório para confirmar se `mc-export-spreadsheet` propaga colunas novas automaticamente antes de implementar as colunas de diferença.
+- R19 — **Permissão do ambiente do corretor**: endpoint dedicado é necessário porque a API genérica de avaliação não isola slots dentro da mesma inscrição.
+
+**Evidência de implementação (a preencher pelo time de Engenharia em Stage 2):**
+- `registration_appeal_review` — migration e entidade (PR1).
+- `AppealReview::eligibleCorrectors()` — regra de elegibilidade por slot (PR2).
+- `AppealReview\Service::applyCorrection()` — persistência in-place e revisão (PR4).
+- Endpoint read-only do corretor designado (PR4.5).
+- Componentes frontend: `opportunity-appeal-correction-assignment`, `opportunity-appeal-correction-evaluation` (F2, F3).
+- Feature flags: `APPEAL_TWO_STAGE_PUBLISH` e `APPEAL_SCORE_CORRECTION`, default OFF.
+
 ### Grupo B — Entidades do mapeamento cultural
 
 - **RF-B1 — Ciclo de status comum:** `Rascunho(0) → Ativado(1)` + `Arquivado(-2)`, `Lixeira(-10)`, `Desabilitado(-9)`; publicação é ativar; histórico em `/historico` (`EntityRevision`). **Evidência:** `Entity.php:67-87, 374-382`; `config/routes.php:54`.
