@@ -4,18 +4,25 @@
      never salary, performance review or sensitive data.
      Versioned in the repository: visible to whoever has access to it. -->
 <!-- Gerado no setup (J12) em 2026-08-17; papéis confirmados pelo humano. -->
+<!-- Atualizado em triagem 2026-08-26: desenvolvedores @israelmelo e @erleibiazzio; product @cesardelucca. -->
 
 ## People
 
 ### @erleibiazzio
 - **Name:** Erlei Biazzio
-- **Role in the flow:** Engineering + Delivery
+- **Role in the flow:** Engineering
 - **Seniority:** não informado
 - **Specialty:** não informado
 
 ### @israelmelo
 - **Name:** não informado
-- **Role in the flow:** Engineering + Delivery
+- **Role in the flow:** Engineering
+- **Seniority:** não informado
+- **Specialty:** não informado
+
+### @cesardelucca
+- **Name:** não informado
+- **Role in the flow:** Product
 - **Seniority:** não informado
 - **Specialty:** não informado
 
