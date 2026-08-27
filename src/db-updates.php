@@ -3533,4 +3533,49 @@ $$
             WHERE seal_exemption_status IS NOT NULL");
     },
 
+    'create registration_appeal_review table' => function () {
+        if (__table_exists('registration_appeal_review')) {
+            echo "ALREADY APPLIED";
+            return true;
+        }
+
+        __exec("CREATE SEQUENCE registration_appeal_review_id_seq INCREMENT BY 1 MINVALUE 1 START 1;");
+
+        __exec("CREATE TABLE registration_appeal_review (
+            id INT NOT NULL,
+            original_evaluation_id INT NOT NULL,
+            registration_id INT NOT NULL,
+            appeal_phase_id INT NOT NULL,
+            slot_owner_user_id INT NOT NULL,
+            corrector_user_id INT NOT NULL,
+            status SMALLINT NOT NULL DEFAULT 0,
+            correction_type VARCHAR(20) NOT NULL,
+            released_scope JSONB DEFAULT NULL,
+            starts_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
+            ends_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
+            original_value JSONB DEFAULT NULL,
+            corrected_value JSONB DEFAULT NULL,
+            original_score DOUBLE PRECISION DEFAULT NULL,
+            corrected_score DOUBLE PRECISION DEFAULT NULL,
+            create_timestamp TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
+            sent_timestamp TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
+            update_timestamp TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
+            PRIMARY KEY(id));");
+
+        __exec("CREATE INDEX idx_registration_appeal_review_original_evaluation_id ON registration_appeal_review (original_evaluation_id);");
+        __exec("CREATE INDEX idx_registration_appeal_review_registration_id ON registration_appeal_review (registration_id);");
+        __exec("CREATE INDEX idx_registration_appeal_review_appeal_phase_id ON registration_appeal_review (appeal_phase_id);");
+        __exec("CREATE INDEX idx_registration_appeal_review_slot_owner_user_id ON registration_appeal_review (slot_owner_user_id);");
+        __exec("CREATE INDEX idx_registration_appeal_review_corrector_user_id ON registration_appeal_review (corrector_user_id);");
+
+        __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_original_evaluation_id FOREIGN KEY (original_evaluation_id) REFERENCES registration_evaluation (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
+        __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_registration_id FOREIGN KEY (registration_id) REFERENCES registration (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
+        __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_appeal_phase_id FOREIGN KEY (appeal_phase_id) REFERENCES opportunity (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
+        __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_slot_owner_user_id FOREIGN KEY (slot_owner_user_id) REFERENCES usr (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
+        __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_corrector_user_id FOREIGN KEY (corrector_user_id) REFERENCES usr (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
+
+        // Índice único parcial: impede duas designações ativas (status 0 ou 1) para a mesma avaliação original.
+        __exec("CREATE UNIQUE INDEX idx_registration_appeal_review_active_slot ON registration_appeal_review (original_evaluation_id) WHERE status IN (0, 1);");
+    },
+
 ] + $updates ;
