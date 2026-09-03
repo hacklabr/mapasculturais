@@ -151,7 +151,7 @@ $this->import("
             </template>
 
             <template #button="modal">
-                <button type="button" @click="modal.open(); initFormData('sendSuggestionMessage')" :class="contactButtonClasses">
+                <button v-if="!disableContact" type="button" @click="modal.open(); initFormData('sendSuggestionMessage')" :class="contactButtonClasses">
                     <mc-icon name="email"></mc-icon>
                     <span v-if="contactButtonLabel">{{ contactButtonLabel }}</span>
                     <span v-else><?= i::__('Contato') ?></span>

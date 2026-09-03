@@ -459,6 +459,10 @@ class Opportunity extends EntityController {
                 $r->agent = $e->agent->simplify('id,name,type,singleUrl,avatar,user');
                 $r->agentUserId = $e->agent->userId;
                 $r->group = $e->group;
+                $warning = $e->owner->buildOwnRegistrationsWarning($e->agent->user, $e->agent->name);
+                if ($warning) {
+                    $r->ownRegistrationsWarning = $warning;
+                }
                 return $r;
             }, $relations);
         } else {
@@ -1592,7 +1596,7 @@ class Opportunity extends EntityController {
         if(!$opportunity->canUser("@control")){
             $avaliableEvaluationFields = (!empty($opportunity->avaliableEvaluationFields) || $opportunity->avaliableEvaluationFields != "") ? $opportunity->avaliableEvaluationFields : [];
             foreach($_result as $key => $res){
-                if(!in_array("agentsSummary", array_keys($avaliableEvaluationFields))){
+                if(!isset($avaliableEvaluationFields['agentsSummary']) || ($avaliableEvaluationFields['agentsSummary'] !== true && $avaliableEvaluationFields['agentsSummary'] !== 'true')){
                     $_result[$key]['registration']['owner'] =  [];
                     $_result[$key]['registration']['agentsData'] =  [];
                 }

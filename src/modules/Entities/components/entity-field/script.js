@@ -150,6 +150,13 @@ app.component('entity-field', {
             type: Boolean,
             default: false
         },
+        // Issue #32: sobrescreve, quando informado (true/false), a marcação de
+        // obrigatório vinda da descrição da propriedade (description.required).
+        // null (default) mantém o comportamento atual baseado na descrição.
+        required: {
+            type: Boolean,
+            default: null
+        },
         debounce: {
             type: Number,
             default: 0
@@ -408,7 +415,10 @@ app.component('entity-field', {
 
         change(event, now) {
             clearTimeout(this.__timeout);
-            let oldValue = this.entity[this.prop] ? JSON.parse(JSON.stringify(this.entity[this.prop])) : null;
+            const currentValue = this.entity[this.prop];
+            let oldValue = (currentValue === null || currentValue === undefined || currentValue === '')
+                ? null
+                : JSON.parse(JSON.stringify(currentValue));
             
             this.__timeout = setTimeout(() => {
                if(this.is('date') || this.is('datetime') || this.is('time')) {

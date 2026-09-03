@@ -7,16 +7,116 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 ### Novas Funcionalidades
+- Adiciona configuração na oportunidade para ocultar todas as datas das fases na página pública, na linha do tempo de acompanhamento da inscrição e nos avisos de prazo da ficha, mantendo as datas operacionais ativas para validações e gestão interna.
 - **Avaliação automática por selos**: o gestor pode indicar, em uma fase de avaliação, quais selos validam o proponente. Se a pessoa já tiver esses selos válidos no perfil, a inscrição é **dispensada automaticamente** daquela fase (marcada como “Dispensada por selos”) e segue para a próxima etapa, sem precisar de avaliador
 - **Novos anexos no cadastro do agente** (também usáveis como campos `@` no formulário de inscrição): CPF, CNPJ, CNH, RG, passaporte, comprovante de residência, vínculo territorial, currículo, portfólio, certidões fiscal, trabalhista e de prestação de contas, além de comprovantes de raça/cor, pessoa com deficiência e comunidades tradicionais. Os arquivos ficam no perfil e acompanham a inscrição automaticamente
+
+## [7.8.9] - 2026-09-02
+### Correções
+- Na prévia do formulário de inscrição, restaura os seletores de categoria, tipo de proponente e faixa e faz as etapas condicionais acompanharem a seleção, mantendo a navegação em uma etapa válida quando ela muda
+- Impede que a limpeza de assets órfãos apague templates HTML ainda referenciados no cache (ex.: `edit-box.html` do form-builder/embedTools), passando a proteger `.html`/`.htm` e chaves Redis de `publishAsset`
+
+## [7.8.8] - 2026-09-01
+### Correções
+- Corrige falha no build Docker do CI com pnpm 10 (ERR_PNPM_IGNORED_BUILDS), aprovando os build scripts necessários e fixando a versão do pnpm
+
+## [7.8.7] - 2026-09-01
+### Correções
+- Corrige os filtros de período de inscrição nas listas de oportunidades para enviar o timestamp completo (YYYY-MM-DD HH:mm) em vez de apenas a data, classificando corretamente as inscrições abertas, futuras e encerradas
+- Corrige ocultação do resumo do agente ao desmarcar campo visível para avaliadores
+
+### Melhorias
+- Ajusta tamanho dos cards da seção "Em destaque" na página inicial
+- Ajusta tamanho dos cards da seção "Editados recentemente" no painel de controle
+- Nova flag opcional (AGENTS_REQUIRED_DOCUMENTS_BY_TYPE) para exigir CPF em agentes Individuais e CNPJ em agentes Coletivos em todo salvamento, com os formulários marcando o campo obrigatório conforme o tipo; desativada por padrão
+- Modal de criação de agente exibe automaticamente CPF/CNPJ conforme o tipo quando a flag está ativa (sem *obrigatório, padrão hide-required dos modais de criação)
+- Torna colapsáveis as seções de textos explicativos e selos na config de avaliação
+
+## [7.8.6] - 2026-08-13
+### Correções
+- Corrige erro que podia interromper o carregamento da página quando a data de um selo de verificação estava em branco
+- Envolve textos hardcoded em funções de tradução em telas BaseV1, componentes Vue e confirmações em JavaScript
+- Completa as traduções em espanhol (es_ES) com as strings novas
+
+### Melhorias
+- Permite aplicar um status do resultado da avaliação a uma lista específica de inscrições, nos métodos técnico, simplificado, documental e contínuo
+- Passa a limpar automaticamente arquivos antigos de CSS, JavaScript e imagens publicados que ficavam acumulados no servidor, sem remover nada que ainda está em uso
 
 ### Melhorias nos selos validadores
 - Mostra o **status de cada campo** do selo (válido, prestes a vencer, vencido etc.) na ficha e no formulário de avaliação, para o avaliador entender o que está ok e o que precisa de atenção
 - Permite **concessão parcial do selo** na avaliação documental: o selo pode ser aplicado só aos campos que passaram, conforme os invalidadores configurados
 - Permite configurar **condições nos invalidadores**: um documento só é exigido quando o proponente responde de determinado jeito no formulário (por exemplo, só pedir comprovante de PCD se a pessoa se declarar PCD)
+- A **concessão de selos após a avaliação documental** também respeita essas condições: invalidadores relevados (condição não aplicável à inscrição) não impedem a concessão do selo
 - Avisa o gestor quando o formulário da inscrição ainda **não tem os campos** necessários para a validação automática por selos funcionar
 - Inclui coluna, filtros e indicação de isenção por selos na tabela e na planilha de avaliações
 - Exibe corretamente os anexos `@` do agente na inscrição, na edição do perfil, na single e nas listagens/planilhas (com link para download)
+
+### Correções
+- Na redistribuição de avaliações, inclusões manuais passam a contar na carga pendente do comparador antes da distribuição automática (e a ordem das inscrições fica estável por `id`), evitando que o mesmo avaliador receba a próxima inscrição por acaso
+- Na avaliação documental, o link de download do arquivo não cobre mais o campo inteiro: clicar no campo abre o formulário de avaliação e clicar no nome do arquivo continua baixando
+- Corrige erro que podia interromper o carregamento da página quando a data de um selo de verificação estava em branco
+
+## [7.8.5] - 2026-08-06
+### Correções
+- Exibe todas as mensagens retornadas pelo backend quando o salvamento de uma entidade falha por validação, incluindo erros de campos ocultos ou somente leitura
+- No e-mail de solicitação de exclusão de conta, as quebras de linha da mensagem aparecem corretamente, sem mostrar códigos HTML
+- Na edição do agente, o aviso de campos obrigatórios fica alinhado com os demais avisos e cards da página
+- Após publicar, despublicar, excluir ou recuperar uma entidade no painel, o status na tela é atualizado de imediato
+
+### Melhorias
+- Ajusta tamanho dos cards da seção "Oportunidades do momento" na página inicial
+- Quando a conta é excluída de forma parcial ou permanente, a pessoa recebe um e-mail confirmando o que foi feito
+- Melhora a aparência e a organização do bloco de e-mail e senha na página de detalhes do usuário
+- Por padrão, se o perfil ainda não estiver completo, a pessoa é direcionada para terminá-lo antes de seguir no sistema
+
+## [7.8.4] - 2026-08-04
+### Correções
+- Corrige a configuração do formulário da fase de recurso para criar a etapa inicial automaticamente e exibir corretamente a obrigatoriedade de campos e anexos ao editá-los
+- Torna idempotente o db-update que cria índices em diversas tabelas, evitando erro no boot quando os índices já existem
+- Inclui a fonte ElegantIcons no BaseV2 para que o publish de assets a disponibilize em `/assets/fonts/`, evitando ícones quebrados no EmbedTools (form-builder)
+- Corrige login via Google que não salvava o nome do usuário no perfil, por não solicitar o escopo de perfil na autenticação
+- Corrige a opção de obrigatoriedade ao adicionar campos e anexos sucessivos no formulário de inscrição, evitando que o próximo item apareça marcado como obrigatório por causa da configuração anterior
+- Corrige erro na ficha do agente ao listar agentes relacionados quando o mesmo grupo tem convite pendente e relação ativa
+- Corrige visualização mobile da aba 'Inscrições e Resultados' na edição da oportunidade
+
+### Melhorias
+- Adiciona teste automatizado para evitar que volte a quebrar a listagem de agentes relacionados com convite pendente
+
+## [7.8.3] - 2026-07-30
+### Correções
+- Corrige o overflow da comissão de avaliação na fase de recurso, evitando que botões internos fiquem com largura estourada
+- Mantém o botão "Salvar e publicar" visível em oportunidades em rascunho que já possuem configuração de método de avaliação
+- No envio de denúncia e contato/sugestão, retorna erro em JSON quando o captcha é inválido ou ausente, em vez de falha genérica
+- Corrige a configuração do formulário da fase de recurso para criar a etapa inicial automaticamente e exibir corretamente a obrigatoriedade de campos e anexos ao editá-los
+
+### Melhorias
+- Permite enviar o contato/sugestão ao dono da entidade e aos agentes do grupo "Administrado por", via configuração `suggestion.sendToEntityAdmins`
+- Adiciona testes automatizados do módulo CompliantSuggestion e da regressão do botão "Salvar e publicar"
+
+## [7.8.2] - 2026-07-24
+### Correções
+- O botão Voltar da tela de avaliação leva de volta à lista de onde a pessoa veio (lista completa da gestão ou lista do avaliador), mesmo depois de trocar de inscrição pelo menu lateral
+- No menu lateral da avaliação, os links continuam apontando para o avaliador certo quando um gestor navega em nome de outra pessoa
+- Se a pessoa abrir a avaliação da própria inscrição, o sistema mostra um aviso e bloqueia o formulário
+- Na lista de um avaliador específico, aparecem só as avaliações dele — mesmo que essa pessoa também seja gestora do edital
+- Impede salvar avaliação em inscrição que não foi atribuída à pessoa, e também impede o proponente de avaliar a própria inscrição; o gestor ainda pode editar uma avaliação já feita por outro avaliador
+- Na tabela de avaliações, o link abre a avaliação do avaliador daquela linha, evitando que o gestor acabe criando avaliação em nome próprio por engano
+- Ajusta as cores do status no acompanhamento da inscrição para bater com a legenda oficial: Pendente e Rascunho em preto, Inválida em roxo, Não selecionada em vermelho, Suplente em laranja e Selecionada em verde
+- Impede que um campo numérico deixado em branco seja salvo como zero, o que fazia o sistema achar que havia valor preenchido
+- Mostra corretamente o valor zero (0) na inscrição, em vez de aparecer como “campo não informado”
+- Corrige erro de renderização na galeria de vídeos ao editar o título, quando o popover montava o formulário antes de `newData` existir
+
+### Melhorias
+- Ao adicionar ou trocar um avaliador na comissão, avisa se a pessoa também está inscrita no edital e que não avaliará a própria inscrição
+- Deixa esse aviso mais visível e fácil de entender nos cards da comissão de avaliação
+- No campo numérico do formulário, permite escolher se o zero é aceito e limitar a quantidade mínima e máxima de dígitos
+- Adiciona testes automatizados para o aviso de inscrição própria do avaliador
+- Adiciona testes automatizados para as regras do campo numérico (aceitação do zero e quantidade de dígitos)
+- Adiciona testes automatizados para o bloqueio de avaliação indevida e de autoavaliação
+- Adiciona testes de regressão para a lista do avaliador, o aviso na autoavaliação, o botão Voltar e a navegação correta
+
+### Melhorias não funcionais
+- Adiciona hook `evaluationMethod.distributionComparator` para permitir que temas personalizem a ordem de prioridade dos avaliadores durante a redistribuição de comissões
 
 ## [7.8.1] - 2026-07-21
 ### Melhorias

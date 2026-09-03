@@ -134,7 +134,7 @@ $owner_count = $entity->parent ? 1 : 0;
                             <template #body>
                                 <div class="grid-12">
                                     <entity-field v-if="global.auth.is('admin')" :entity="entity" prop="type" @change="entity.save(true).then(() => global.reload())" classes="col-6 sm:col-12"></entity-field>
-                                    <entity-field :entity="entity" classes="col-6 sm:col-12" prop="cnpj" label="CNPJ"></entity-field>
+                                    <entity-field :entity="entity" classes="col-6 sm:col-12" prop="cnpj" label="CNPJ" :required="<?= $entity->isPropertyRequired($entity, 'cnpj') ? 'true' : 'false' ?>"></entity-field>
                                     <entity-field :entity="entity" classes="col-6 sm:col-12" prop="emailPrivado" label="<?= i::__('E-mail privado ') ?>"></entity-field>
                                     <entity-field :entity="entity" classes="col-6 sm:col-12" prop="telefonePublico" label="<?= i::__('Telefone público com DDD') ?>"></entity-field>
                                     <entity-field :entity="entity" classes="col-6 sm:col-12" prop="nomeCompleto" label="<?php i::_e('Razão Social') ?>"></entity-field>
