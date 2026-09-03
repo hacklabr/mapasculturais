@@ -237,6 +237,10 @@ $owner_count = $entity->owner ? 1 : 0;
                                 </div>
                             </section>
                             <?php endif; ?>
+
+                            <?php if ($owner_count === 0 && $admin_count === 0 && $collaborator_count === 0): ?>
+                            <p class="single-1__administration-empty"><?php i::_e('Não existem dados cadastrados nesta seção.'); ?></p>
+                            <?php endif; ?>
                         </div>
                     </main>
                 </mc-container>

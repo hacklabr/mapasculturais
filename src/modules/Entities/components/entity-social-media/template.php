@@ -14,7 +14,7 @@ $this->import('
 ');
 ?>
 
-<mc-collapsible :open="show" :classes="classes">
+<mc-collapsible v-if="editable || hasSocialMedia" :open="show" :classes="classes">
     <template #header>
         <mc-title tag="h4" size="medium" class="bold">
             <?= i::__("Redes sociais") ?>

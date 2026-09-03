@@ -193,7 +193,9 @@ $owner_count = $entity->owner ? 1 : 0;
                         </div>
                     </div>
 
-                    <div class="col-12 single-1__social-media">
+                    <div
+                        v-if="entity.instagram || entity.twitter || entity.vimeo || entity.linkedin || entity.facebook || entity.youtube || entity.spotify || entity.pinterest || entity.tiktok || entity.fediverso"
+                        class="col-12 single-1__social-media">
                         <mc-card>
                             <template #content>
                                 <entity-social-media :entity="entity" classes="col-12"></entity-social-media>
@@ -261,6 +263,10 @@ $owner_count = $entity->owner ? 1 : 0;
                                     <entity-people-collaborators :entity="entity"></entity-people-collaborators>
                                 </div>
                             </section>
+                            <?php endif; ?>
+
+                            <?php if ($owner_count === 0 && $admin_count === 0 && $collaborator_count === 0): ?>
+                            <p class="single-1__administration-empty"><?php i::_e('Não existem dados cadastrados nesta seção.'); ?></p>
                             <?php endif; ?>
                         </div>
                     </main>

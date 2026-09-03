@@ -2193,6 +2193,10 @@
         @extend %full-width;
         margin: 0 0 size(24);
 
+        &:not(:has(.mc-collapsible)) {
+            display: none;
+        }
+
         .mc-card {
             @extend %full-width;
             margin-bottom: 0;
@@ -2274,6 +2278,24 @@
     // Portfólio — Arquivos / Links / Vídeos / Imagens (Figma)
     &__portfolio {
         width: 100%;
+    }
+
+    &__portfolio-section {
+        width: 100%;
+        margin-bottom: size(16);
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    &__portfolio-section-title {
+        margin: 0 0 size(16);
+        padding: 0;
+        font-weight: 700;
+        font-size: size(20);
+        line-height: size(24);
+        color: var(--mc-low-500);
     }
 
     &__portfolio-card {

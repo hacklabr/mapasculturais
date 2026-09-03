@@ -193,7 +193,9 @@ foreach ($entity->getAgentRelationsGrouped(null, $include_pending_relations) as 
                                     </div>
                                 </div>
 
-                                <div class="col-12 single-1__social-media">
+                                <div
+                                    v-if="entity.instagram || entity.twitter || entity.vimeo || entity.linkedin || entity.facebook || entity.youtube || entity.spotify || entity.pinterest || entity.tiktok || entity.fediverso"
+                                    class="col-12 single-1__social-media">
                                     <mc-card>
                                         <template #content>
                                             <entity-social-media :entity="entity" classes="col-12"></entity-social-media>
@@ -416,6 +418,10 @@ foreach ($entity->getAgentRelationsGrouped(null, $include_pending_relations) as 
                                 </div>
                             </section>
                             <?php endif; ?>
+
+                            <?php if ($admin_count === 0 && $collaborator_count === 0): ?>
+                            <p class="single-1__administration-empty"><?php i::_e('Não existem dados cadastrados nesta seção.'); ?></p>
+                            <?php endif; ?>
                         </div>
                     </main>
                 </mc-container>
@@ -427,13 +433,23 @@ foreach ($entity->getAgentRelationsGrouped(null, $include_pending_relations) as 
                         <div class="single-1__portfolio single-1__inner-tabs">
                             <mc-tabs class="tabs" sync-hash>
                                 <mc-tab label="<?= i::esc_attr_e('Arquivos') ?>" slug="arquivos">
-                                    <div class="single-1__portfolio-card">
-                                        <template v-if="entity.currentUserPermissions.viewPrivateData && (entity.files?.['docs-curriculo'] || entity.files?.['docs-portfolio'])">
-                                            <entity-files-list v-if="entity.files?.['docs-curriculo']" :entity="entity" classes="portfolio-files-list" group="docs-curriculo" seal-prop="curriculoAnexo" title="<?php i::_e('Currículo'); ?>" view-action></entity-files-list>
-                                            <entity-files-list v-if="entity.files?.['docs-portfolio']" :entity="entity" classes="portfolio-files-list" group="docs-portfolio" seal-prop="portfolioAnexo" title="<?php i::_e('Portfólio'); ?>" view-action></entity-files-list>
-                                        </template>
+                                    <div
+                                        v-if="entity.currentUserPermissions.viewPrivateData && entity.files?.['docs-curriculo']"
+                                        class="single-1__portfolio-card single-1__portfolio-section">
+                                        <h2 class="single-1__portfolio-section-title"><?php i::_e('Currículo'); ?></h2>
+                                        <entity-files-list :entity="entity" classes="portfolio-files-list" group="docs-curriculo" seal-prop="curriculoAnexo" title="<?php i::_e('Currículo'); ?>" hide-title view-action></entity-files-list>
+                                    </div>
+                                    <div
+                                        v-if="entity.currentUserPermissions.viewPrivateData && entity.files?.['docs-portfolio']"
+                                        class="single-1__portfolio-card single-1__portfolio-section">
+                                        <h2 class="single-1__portfolio-section-title"><?php i::_e('Portfólio'); ?></h2>
+                                        <entity-files-list :entity="entity" classes="portfolio-files-list" group="docs-portfolio" seal-prop="portfolioAnexo" title="<?php i::_e('Portfólio'); ?>" hide-title view-action></entity-files-list>
+                                    </div>
+                                    <div
+                                        v-if="entity.files?.downloads"
+                                        class="single-1__portfolio-card single-1__portfolio-section">
+                                        <h2 class="single-1__portfolio-section-title"><?php i::_e('Arquivos'); ?></h2>
                                         <entity-files-list
-                                            v-if="entity.files?.downloads"
                                             :entity="entity"
                                             classes="portfolio-files-list"
                                             group="downloads"
