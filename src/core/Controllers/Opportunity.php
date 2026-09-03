@@ -185,6 +185,54 @@ class Opportunity extends EntityController {
     }
 
     /**
+     * Publica o resultado preliminar das inscrições (APPEAL_TWO_STAGE_PUBLISH).
+     */
+    function ALL_publishPreliminaryRegistrations(){
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        $opportunity = $this->requestedEntity;
+
+        if(!$opportunity) {
+            $app->pass();
+        }
+
+        $opportunity->registerRegistrationMetadata();
+        $opportunity->publishPreliminaryRegistrations();
+
+        if($this->isAjax()){
+            $this->json($opportunity);
+        }else{
+            $app->redirect($app->request->getReferer());
+        }
+    }
+
+    /**
+     * Despublica o resultado preliminar das inscrições (APPEAL_TWO_STAGE_PUBLISH).
+     */
+    function ALL_unPublishPreliminaryRegistrations() {
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        $opportunity = $this->requestedEntity;
+
+        if (!$opportunity) {
+            $app->pass();
+        }
+
+        $opportunity->registerRegistrationMetadata();
+        $opportunity->unPublishPreliminaryRegistrations();
+
+        if ($this->isAjax()) {
+            $this->json($opportunity);
+        } else {
+            $app->redirect($app->request->getReferer());
+        }
+    }
+
+    /**
     * Despublica as inscrições de uma oportunidade
     * 
     * Esta ação requer autenticação e permissão na oportunidade.

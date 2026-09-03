@@ -17,6 +17,7 @@ class Module extends \MapasCulturais\Module {
     {
         $config += [
             'sendMailNotification.opportunityAppealPhase' => env('SEND_MAIL_OPPORTUNITY_APPEAL_PHASE', false),
+            'featureFlag.appealTwoStagePublish' => env('APPEAL_TWO_STAGE_PUBLISH', false),
         ];
 
         parent::__construct($config);
@@ -313,6 +314,13 @@ class Module extends \MapasCulturais\Module {
             'default' => false,
         ]);
 
+        $this->registerOpportunityMetadata('publishedPreliminaryRegistrations', [
+            'label' => i::__('Resultado preliminar das inscrições publicado'),
+            'type'  => 'boolean',
+            'default' => false,
+            'private' => false,
+        ]);
+
         $this->registerEvauationMethodConfigurationMetadata('appealPhase', [
             'label'     => i::__('Indica se é uma fase de recurso'),
             'type'      => 'entity',
@@ -323,6 +331,11 @@ class Module extends \MapasCulturais\Module {
                 return $evaluationMethodConfiguration->opportunity->appealPhase;
             }
         ]);
+    }
+
+    public function isTwoStagePublishEnabled(): bool
+    {
+        return (bool) env('APPEAL_TWO_STAGE_PUBLISH', $this->config['featureFlag.appealTwoStagePublish']);
     }
 
     /**
