@@ -3539,7 +3539,9 @@ $$
             return true;
         }
 
-        __exec("CREATE SEQUENCE registration_appeal_review_id_seq INCREMENT BY 1 MINVALUE 1 START 1;");
+        if (!__sequence_exists('registration_appeal_review_id_seq')) {
+            __exec("CREATE SEQUENCE registration_appeal_review_id_seq INCREMENT BY 1 MINVALUE 1 START 1;");
+        }
 
         __exec("CREATE TABLE registration_appeal_review (
             id INT NOT NULL,
@@ -3562,6 +3564,8 @@ $$
             update_timestamp TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
             PRIMARY KEY(id));");
 
+        __exec("ALTER TABLE ONLY registration_appeal_review ALTER COLUMN id SET DEFAULT nextval('registration_appeal_review_id_seq'::regclass);");
+
         __exec("CREATE INDEX idx_registration_appeal_review_original_evaluation_id ON registration_appeal_review (original_evaluation_id);");
         __exec("CREATE INDEX idx_registration_appeal_review_registration_id ON registration_appeal_review (registration_id);");
         __exec("CREATE INDEX idx_registration_appeal_review_appeal_phase_id ON registration_appeal_review (appeal_phase_id);");
@@ -3574,8 +3578,8 @@ $$
         __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_slot_owner_user_id FOREIGN KEY (slot_owner_user_id) REFERENCES usr (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
         __exec("ALTER TABLE registration_appeal_review ADD CONSTRAINT fk_registration_appeal_review_corrector_user_id FOREIGN KEY (corrector_user_id) REFERENCES usr (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE;");
 
-        // Índice único parcial: impede duas designações ativas (status 0 ou 1) para a mesma avaliação original.
-        __exec("CREATE UNIQUE INDEX idx_registration_appeal_review_active_slot ON registration_appeal_review (original_evaluation_id) WHERE status IN (0, 1);");
+        // Índice único parcial: impede duas designações ativas (designado/rascunho/reaberto) para o mesmo slot.
+        __exec("CREATE UNIQUE INDEX idx_registration_appeal_review_active_slot ON registration_appeal_review (original_evaluation_id) WHERE status IN (0, 1, 3);");
     },
 
 ] + $updates ;

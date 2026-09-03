@@ -4,6 +4,7 @@ namespace OpportunityAppealPhase\Entities;
 
 use DateTime;
 use Doctrine\ORM\Mapping as ORM;
+use MapasCulturais\App;
 use MapasCulturais\Entity;
 use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
@@ -212,7 +213,91 @@ class RegistrationAppealReview extends Entity
         return [
             self::STATUS_DESIGNATED,
             self::STATUS_DRAFT,
+            self::STATUS_REOPENED,
         ];
+    }
+
+    public static function isActiveStatus(int $status): bool
+    {
+        return in_array($status, self::getActiveStatuses(), true);
+    }
+
+    public function isActive(): bool
+    {
+        return self::isActiveStatus((int) $this->status);
+    }
+
+    /**
+     * Retorna os usuários elegíveis para corrigir o slot vinculado a esta designação.
+     *
+     * No MVP, a correção é restrita a oportunidades cuja fase principal usa
+     * `EvaluationMethodTechnical`.
+     *
+     * @return User[]
+     */
+    public function eligibleCorrectors(?RegistrationEvaluation $slot = null): array
+    {
+        $slot ??= $this->originalEvaluation;
+
+        if (!$slot || !$this->appealPhase || !$this->appealPhase->parent) {
+            return [];
+        }
+
+        $main_phase = $slot->registration->opportunity;
+        $main_emc = $main_phase->evaluationMethodConfiguration;
+
+        if (!$main_emc || $main_emc->type->id !== 'technical') {
+            return [];
+        }
+
+        if ($this->appealPhase->status !== Opportunity::STATUS_APPEAL_PHASE || !$this->appealPhase->evaluationMethodConfiguration) {
+            return [];
+        }
+
+        $users = [];
+        $users_by_id = [];
+
+        $push_user = static function (?User $user) use (&$users, &$users_by_id): void {
+            if (!$user || isset($users_by_id[$user->id])) {
+                return;
+            }
+
+            $users[] = $user;
+            $users_by_id[$user->id] = true;
+        };
+
+        $push_user($slot->user);
+
+        foreach ($this->appealPhase->evaluationMethodConfiguration->getCommittee(false) as $agent) {
+            $push_user($agent->user);
+        }
+
+        return $users;
+    }
+
+    public static function findActiveForEvaluationAndUser(RegistrationEvaluation $slot, User $user): ?self
+    {
+        $app = App::i();
+        /** @var self[] $reviews */
+        $reviews = $app->repo(self::class)->findBy([
+            'originalEvaluation' => $slot,
+            'correctorUser' => $user,
+            'status' => self::getActiveStatuses(),
+        ]);
+
+        foreach ($reviews as $review) {
+            if (
+                $review->registration->equals($slot->registration) &&
+                $review->appealPhase &&
+                $review->appealPhase->status === Opportunity::STATUS_APPEAL_PHASE &&
+                $review->slotOwnerUser &&
+                $review->slotOwnerUser->equals($slot->user)
+            ) {
+                return $review;
+            }
+        }
+
+        return null;
     }
 
     public function setReleasedScope($value): void
