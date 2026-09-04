@@ -8,8 +8,10 @@ use MapasCulturais\Entities\EvaluationMethodConfiguration;
 use MapasCulturais\Entities\Notification;
 use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
+use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\RegistrationStep;
 use MapasCulturais\i;
+use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 class Module extends \MapasCulturais\Module {
 
@@ -17,6 +19,7 @@ class Module extends \MapasCulturais\Module {
     {
         $config += [
             'sendMailNotification.opportunityAppealPhase' => env('SEND_MAIL_OPPORTUNITY_APPEAL_PHASE', false),
+            'featureFlag.appealScoreCorrection' => env('APPEAL_SCORE_CORRECTION', false),
         ];
 
         parent::__construct($config);
@@ -25,6 +28,24 @@ class Module extends \MapasCulturais\Module {
     public function _init() {
         $app = App::i();
         $self = $this;
+
+        $app->hook('entity(RegistrationEvaluation).canUser(modify)', function ($user, &$result) use ($self) {
+            /** @var RegistrationEvaluation $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
+        });
+
+        $app->hook('entity(RegistrationEvaluation).canUser(view)', function ($user, &$result) use ($self) {
+            /** @var RegistrationEvaluation $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
+        });
 
         /* Endpoint de criação de fase de recurso na oportunidade */
         $app->hook('POST(opportunity.createAppealPhase)', function() use ($app) {
@@ -323,6 +344,40 @@ class Module extends \MapasCulturais\Module {
                 return $evaluationMethodConfiguration->opportunity->appealPhase;
             }
         ]);
+    }
+
+    public function canDesignatedCorrectorAccessSlot(RegistrationEvaluation $slot, $user): bool
+    {
+        if (!$this->isAppealScoreCorrectionEnabled() || !$this->isTechnicalEvaluationSlot($slot)) {
+            return false;
+        }
+
+        $review = RegistrationAppealReview::findActiveForEvaluationAndUser($slot, $user);
+
+        if (!$review) {
+            return false;
+        }
+
+        foreach ($review->eligibleCorrectors($slot) as $eligible_user) {
+            if ($eligible_user->equals($user)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isTechnicalEvaluationSlot(RegistrationEvaluation $slot): bool
+    {
+        $opportunity = $slot->registration->opportunity;
+        $emc = $opportunity->evaluationMethodConfiguration;
+
+        return (bool) $emc && $emc->type->id === 'technical';
+    }
+
+    private function isAppealScoreCorrectionEnabled(): bool
+    {
+        return (bool) env('APPEAL_SCORE_CORRECTION', $this->config['featureFlag.appealScoreCorrection']);
     }
 
     /**
