@@ -361,6 +361,8 @@ class Module extends \MapasCulturais\Module {
     public function register() {
         $app = App::i();
 
+        $app->registerController('appealCorrector', \OpportunityAppealPhase\Controllers\AppealCorrector::class);
+
         $this->registerOpportunityMetadata('appealPhase', [
             'label' => i::__('Fase de recurso'),
             'type'  => 'entity'
