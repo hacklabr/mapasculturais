@@ -105,6 +105,9 @@ class Service
             throw $e;
         }
 
+        // PR5 (issue #15): notifica correção enviada — somente após o commit
+        Notifier::notifyCorrectionSent($review);
+
         return $review;
     }
 

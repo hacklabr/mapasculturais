@@ -11,6 +11,7 @@ use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\RegistrationStep;
 use MapasCulturais\i;
+use OpportunityAppealPhase\AppealReview\Notifier;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 class Module extends \MapasCulturais\Module {
@@ -46,6 +47,12 @@ class Module extends \MapasCulturais\Module {
             }
 
             $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
+        });
+
+        // PR5 (issue #15): notifica corretor designado quando a designação é criada
+        $app->hook('entity(OpportunityAppealPhase.Entities.RegistrationAppealReview).insert:after', function () {
+            /** @var RegistrationAppealReview $this */
+            Notifier::notifyDesignation($this);
         });
 
         /* Endpoint de criação de fase de recurso na oportunidade */
