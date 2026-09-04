@@ -8,8 +8,10 @@ use MapasCulturais\Entities\EvaluationMethodConfiguration;
 use MapasCulturais\Entities\Notification;
 use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
+use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\RegistrationStep;
 use MapasCulturais\i;
+use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 class Module extends \MapasCulturais\Module {
 
@@ -18,6 +20,7 @@ class Module extends \MapasCulturais\Module {
         $config += [
             'sendMailNotification.opportunityAppealPhase' => env('SEND_MAIL_OPPORTUNITY_APPEAL_PHASE', false),
             'featureFlag.appealTwoStagePublish' => env('APPEAL_TWO_STAGE_PUBLISH', false),
+            'featureFlag.appealScoreCorrection' => env('APPEAL_SCORE_CORRECTION', false),
         ];
 
         parent::__construct($config);
@@ -26,6 +29,24 @@ class Module extends \MapasCulturais\Module {
     public function _init() {
         $app = App::i();
         $self = $this;
+
+        $app->hook('entity(RegistrationEvaluation).canUser(modify)', function ($user, &$result) use ($self) {
+            /** @var RegistrationEvaluation $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
+        });
+
+        $app->hook('entity(RegistrationEvaluation).canUser(view)', function ($user, &$result) use ($self) {
+            /** @var RegistrationEvaluation $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
+        });
 
         /* Endpoint de criação de fase de recurso na oportunidade */
         $app->hook('POST(opportunity.createAppealPhase)', function() use ($app) {
@@ -287,10 +308,61 @@ class Module extends \MapasCulturais\Module {
             }
             
         });
+
+        /* PR4 — aplica correção de nota no slot designado (APPEAL_SCORE_CORRECTION) */
+        $app->hook('POST(registrationEvaluation.applyAppealCorrection)', function () use ($app) {
+            /** @var Controllers\RegistrationEvaluation $this */
+            $this->requireAuthentication();
+
+            if (!(bool) env('APPEAL_SCORE_CORRECTION', false)) {
+                $this->errorJson(i::__('Correção de notas por recurso desabilitada'), 404);
+            }
+
+            $slot = $this->requestedEntity;
+            if (!$slot) {
+                $app->pass();
+            }
+
+            $review = RegistrationAppealReview::findActiveForEvaluationAndUser($slot, $app->user);
+            if (!$review) {
+                $this->errorJson(i::__('Nenhuma designação ativa de correção para este slot'), 403);
+            }
+
+            $data = $this->data['evaluationData'] ?? $this->data['correctedValue'] ?? null;
+            $draft = !empty($this->data['draft']);
+
+            $service = new \OpportunityAppealPhase\AppealReview\Service();
+
+            try {
+                if ($draft) {
+                    if ($data === null) {
+                        $this->errorJson(i::__('Dados da correção são obrigatórios.'), 400);
+                    }
+                    $review = $service->saveDraft($review, $data);
+                } else {
+                    $review = $service->applyCorrection($review, $data);
+                }
+            } catch (\InvalidArgumentException $e) {
+                $this->errorJson($e->getMessage(), 400);
+            } catch (\MapasCulturais\Exceptions\PermissionDenied $e) {
+                $this->errorJson(i::__('Sem permissão para aplicar a correção'), 403);
+            }
+
+            $this->json([
+                'review' => $review,
+                'evaluation' => $slot->refreshed(),
+                'registration' => [
+                    'id' => $slot->registration->id,
+                    'consolidatedResult' => $slot->registration->refreshed()->consolidatedResult,
+                ],
+            ]);
+        });
     }
 
     public function register() {
         $app = App::i();
+
+        $app->registerController('appealCorrector', \OpportunityAppealPhase\Controllers\AppealCorrector::class);
 
         $this->registerOpportunityMetadata('appealPhase', [
             'label' => i::__('Fase de recurso'),
@@ -336,6 +408,40 @@ class Module extends \MapasCulturais\Module {
     public function isTwoStagePublishEnabled(): bool
     {
         return (bool) env('APPEAL_TWO_STAGE_PUBLISH', $this->config['featureFlag.appealTwoStagePublish']);
+    }
+
+    public function canDesignatedCorrectorAccessSlot(RegistrationEvaluation $slot, $user): bool
+    {
+        if (!$this->isAppealScoreCorrectionEnabled() || !$this->isTechnicalEvaluationSlot($slot)) {
+            return false;
+        }
+
+        $review = RegistrationAppealReview::findActiveForEvaluationAndUser($slot, $user);
+
+        if (!$review) {
+            return false;
+        }
+
+        foreach ($review->eligibleCorrectors($slot) as $eligible_user) {
+            if ($eligible_user->equals($user)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isTechnicalEvaluationSlot(RegistrationEvaluation $slot): bool
+    {
+        $opportunity = $slot->registration->opportunity;
+        $emc = $opportunity->evaluationMethodConfiguration;
+
+        return (bool) $emc && $emc->type->id === 'technical';
+    }
+
+    private function isAppealScoreCorrectionEnabled(): bool
+    {
+        return (bool) env('APPEAL_SCORE_CORRECTION', $this->config['featureFlag.appealScoreCorrection']);
     }
 
     /**
