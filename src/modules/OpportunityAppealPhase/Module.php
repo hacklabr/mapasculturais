@@ -307,6 +307,55 @@ class Module extends \MapasCulturais\Module {
             }
             
         });
+
+        /* PR4 — aplica correção de nota no slot designado (APPEAL_SCORE_CORRECTION) */
+        $app->hook('POST(registrationEvaluation.applyAppealCorrection)', function () use ($app) {
+            /** @var Controllers\RegistrationEvaluation $this */
+            $this->requireAuthentication();
+
+            if (!(bool) env('APPEAL_SCORE_CORRECTION', false)) {
+                $this->errorJson(i::__('Correção de notas por recurso desabilitada'), 404);
+            }
+
+            $slot = $this->requestedEntity;
+            if (!$slot) {
+                $app->pass();
+            }
+
+            $review = RegistrationAppealReview::findActiveForEvaluationAndUser($slot, $app->user);
+            if (!$review) {
+                $this->errorJson(i::__('Nenhuma designação ativa de correção para este slot'), 403);
+            }
+
+            $data = $this->data['evaluationData'] ?? $this->data['correctedValue'] ?? null;
+            $draft = !empty($this->data['draft']);
+
+            $service = new \OpportunityAppealPhase\AppealReview\Service();
+
+            try {
+                if ($draft) {
+                    if ($data === null) {
+                        $this->errorJson(i::__('Dados da correção são obrigatórios.'), 400);
+                    }
+                    $review = $service->saveDraft($review, $data);
+                } else {
+                    $review = $service->applyCorrection($review, $data);
+                }
+            } catch (\InvalidArgumentException $e) {
+                $this->errorJson($e->getMessage(), 400);
+            } catch (\MapasCulturais\Exceptions\PermissionDenied $e) {
+                $this->errorJson(i::__('Sem permissão para aplicar a correção'), 403);
+            }
+
+            $this->json([
+                'review' => $review,
+                'evaluation' => $slot->refreshed(),
+                'registration' => [
+                    'id' => $slot->registration->id,
+                    'consolidatedResult' => $slot->registration->refreshed()->consolidatedResult,
+                ],
+            ]);
+        });
     }
 
     public function register() {
