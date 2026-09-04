@@ -562,7 +562,7 @@ abstract class EvaluationMethod extends Module implements \JsonSerializable{
      */
     function shouldDisplayEvaluationResults(Registration $registration): bool
     {
-        return $registration->opportunity->publishedRegistrations && $registration->opportunity->evaluationMethodConfiguration->publishEvaluationDetails;
+        return $registration->opportunity->areRegistrationResultsPublished() && $registration->opportunity->evaluationMethodConfiguration->publishEvaluationDetails;
     }
 
     /**
@@ -1819,7 +1819,7 @@ abstract class EvaluationMethod extends Module implements \JsonSerializable{
     function canUserViewConsolidatedResult(Entities\Registration $registration){
         $opp = $registration->opportunity;
 
-        if($opp->publishedRegistrations || $opp->canUser('@control')){
+        if($opp->areRegistrationResultsPublished() || $opp->canUser('@control')){
             return true;
         } else {
             return false;
