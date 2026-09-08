@@ -292,12 +292,19 @@ app.component('opportunity-appeal-correction-assignment', {
             return status_key ? this.text(status_key) : String(review?.status ?? '');
         },
 
+        /**
+         * Classes utilitárias de cor do tema (0.settings/_atoms.scss) para o
+         * rótulo e o ícone de status — mesmo padrão do appeal-phase-chat
+         * (mc-icon "circle" + .{primary|success|warning|danger}__color):
+         * designado=pendente (primary), rascunho=em andamento (warning),
+         * enviado=concluído (success), reaberto=exige ação (danger).
+         */
         statusClass(review) {
             return {
-                0: 'opportunity-appeal-correction-assignment__status-label--designated',
-                1: 'opportunity-appeal-correction-assignment__status-label--draft',
-                2: 'opportunity-appeal-correction-assignment__status-label--sent',
-                3: 'opportunity-appeal-correction-assignment__status-label--reopened',
+                0: 'primary__color',
+                1: 'warning__color',
+                2: 'success__color',
+                3: 'danger__color',
             }[this.statusNumber(review)] || '';
         },
 

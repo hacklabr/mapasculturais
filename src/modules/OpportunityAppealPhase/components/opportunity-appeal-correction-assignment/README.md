@@ -58,6 +58,14 @@ inativo. O restante da interface (lista de slots e opções de corretor) opera
 normalmente. Quando o controller existir, os fluxos ativam-se sem alteração
 neste componente.
 
+## Estilo
+
+A estrutura do diálogo vem do `mc-modal` (`.modal-content`/`.modal__*` + botões
+`.button--primary`/`.button--text`, responsivo). O conteúdo interno usa classes
+utilitárias do tema (`.semibold`, `.{primary|success|warning|danger}__color`,
+`.warning__background`) e o `style.css` local do componente (auto-enfileirado,
+sem passo de build — mesmo padrão do `mc-modal`), com tokens `--mc-*`.
+
 ## Defaults de criação
 
 Por linha marcada cria-se: `status=DESIGNATED`, `correctionType=official`
