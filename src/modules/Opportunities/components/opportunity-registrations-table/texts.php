@@ -38,4 +38,5 @@ return [
     'aguardando desempate' => i::__('Aguardando desempate'),
     'Elegível para cotas' => i::__('Elegível para cotas'),
     'Elegível para as cotas' => i::__('Elegível para cotas'),
+    'Designar correção' => i::__('Designar correção'),
 ];

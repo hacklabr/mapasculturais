@@ -184,6 +184,14 @@ $entity = $this->controller->requestedEntity;
                     <a v-if="entity.goalStatuses" :href="entity.singleUrl + '#ficha'" class="entity-table__goals">{{entity.goalStatuses['10']}}/{{entity.goalStatuses.numGoals}} <?= i::__('concluídas') ?></a>
                 </template>
 
+                <?php /* F1 (#17): ação de designação de correção — apenas para inscrições com recurso deferido (a coluna em si só existe para gestores com @control e fase de recurso ativa, via config do opportunity-appeal-correction-assignment). O clique abre o modal de designação (F2), que exibe acompanhamento quando já existem designações. */ ?>
+                <template #appealCorrection="{entity}">
+                    <button v-if="hasDeferredAppeal(entity)" class="button button--icon button--sm button--text opportunity-registration-table__appeal-correction" @click="openAppealCorrectionAssignment(entity)">
+                        <mc-icon name="edit"></mc-icon> <?= i::__('Designar correção') ?>
+                    </button>
+                    <span v-else>&nbsp;</span>
+                </template>
+
             </entity-table>
         </div>
     </template>

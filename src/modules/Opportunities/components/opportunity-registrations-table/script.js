@@ -94,6 +94,18 @@ app.component('opportunity-registrations-table', {
         let order = 'status DESC,consolidatedResult DESC';
         let consolidatedResultOrder = 'consolidatedResult';
 
+        /*
+            F1 (#17): contexto de designação de correção para recurso deferido.
+            A config é injetada pelo init.php do componente
+            opportunity-appeal-correction-assignment SOMENTE quando o usuário
+            tem @control na fase e há fase de recurso ativa com EMC em fase
+            técnica (mesmos gates de RegistrationAppealReview::eligibleCorrectors()),
+            então a presença da chave já carrega a checagem de permissão.
+        */
+        const appeal_correction_config = $MAPAS.config.appealCorrectionAssignment || {};
+        const appeal_phase_id = appeal_correction_config.appealPhases?.[this.phase.id] ?? null;
+        const appeal_correction_enabled = appeal_phase_id != null;
+
         const fieldTypes = ['select', 'boolean', 'checkbox', 'multiselect', 'checkboxes', 'agent-owner-field', 'agent-collective-field'];
 
         for(let key of Object.keys($DESC)) {
@@ -184,7 +196,12 @@ app.component('opportunity-registrations-table', {
                 visible += ',range';
             }
         }
-        
+
+        // F1 (#17): coluna de designação de correção visível apenas no contexto elegível
+        if(appeal_correction_enabled) {
+            visible += ',appealCorrection';
+        }
+
         return {
             sortOptions,
             filters: {},
@@ -202,6 +219,9 @@ app.component('opportunity-registrations-table', {
             order,
             avaliableFields,
             visible,
+            appealCorrectionEnabled: appeal_correction_enabled,
+            appealPhaseId: appeal_phase_id,
+            deferredAppealNumbers: [],
             isAffirmativePoliciesActive,
             hadTechnicalEvaluationPhase,
             isTechnicalEvaluationPhase,
@@ -340,6 +360,17 @@ app.component('opportunity-registrations-table', {
                 itens.push({ text: __('status', 'opportunity-registrations-table'), value: "status", width: '250px', stickyRight: true})
             }
 
+            // F1 (#17): coluna de designação de correção (recurso deferido),
+            // imediatamente antes da coluna de status (sticky right). A coluna
+            // também pode ser exposta no contexto de resultados pelo hook
+            // component(opportunity-results-table).visibleColumns.
+            if(this.appealCorrectionEnabled && !itens.some(item => item.value === 'appealCorrection')) {
+                itens.splice(itens.length - 1, 0, {
+                    text: __('Designar correção', 'opportunity-registrations-table'),
+                    value: 'appealCorrection',
+                });
+            }
+
             const type = this.phase.evaluationMethodConfiguration?.type?.id;
             const phases = $MAPAS.opportunityPhases;
             let hasEvaluationMethodTechnical = false;
@@ -395,6 +426,13 @@ app.component('opportunity-registrations-table', {
             const index = phases.findIndex(item => item.__objectType == this.phase.__objectType && item.id == this.phase.id) - 1;
             return phases[index];
         },
+    },
+
+    mounted() {
+        // F1 (#17): carrega os números com recurso deferido apenas no contexto elegível
+        if (this.appealCorrectionEnabled) {
+            this.fetchDeferredAppealNumbers();
+        }
     },
 
     methods: {
@@ -580,6 +618,55 @@ app.component('opportunity-registrations-table', {
         generateOrDownloadZip(entity) {
             const apiUrl = Utils.createUrl('registration', 'createZipFiles', { id: entity.id });
             window.open(apiUrl, '_blank');
+        },
+
+        /**
+         * F1 (#17): números das inscrições da fase de recurso com status
+         * deferido (STATUS_APPROVED rotulado como "Deferido" no contexto de
+         * recurso). A inscrição da fase de recurso herda o `number` da
+         * inscrição da fase principal (createAppealPhaseRegistration), então
+         * o número identifica a inscrição nas duas fases.
+         */
+        async fetchDeferredAppealNumbers() {
+            const api = new API('registration');
+
+            try {
+                const appeals = await api.find({
+                    'opportunity': `EQ(${this.appealPhaseId})`,
+                    'status': 'EQ(10)',
+                    '@select': 'number',
+                    '@order': 'number ASC',
+                    '@permissions': 'view',
+                });
+
+                this.deferredAppealNumbers = (appeals || [])
+                    .map(appeal => appeal.number)
+                    .filter(Boolean);
+            } catch (error) {
+                console.error('opportunity-registrations-table:fetchDeferredAppealNumbers', error);
+            }
+        },
+
+        /**
+         * F1 (#17): a inscrição da fase principal teve recurso deferido?
+         */
+        hasDeferredAppeal(entity) {
+            return this.deferredAppealNumbers.includes(entity?.number);
+        },
+
+        /**
+         * F1 (#17): abre o modal de designação (F2) pela interface pública
+         * documentada no init.php do componente
+         * opportunity-appeal-correction-assignment. O modal decide o que
+         * exibir (designação ou acompanhamento de designações existentes).
+         */
+        openAppealCorrectionAssignment(entity) {
+            window.dispatchEvent(new CustomEvent('opportunity-appeal-correction-assignment:open', {
+                detail: {
+                    opportunity: this.phase,
+                    registration: entity,
+                },
+            }));
         }
     }
 });
