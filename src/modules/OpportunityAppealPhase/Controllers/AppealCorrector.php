@@ -10,9 +10,11 @@ use OpportunityAppealPhase\AppealReview\CorrectorEnvironment;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 /**
- * Ambiente read-only do corretor designado (PR4.5).
+ * Ambiente do corretor designado (issue #19 / F3).
  *
- * GET /appealCorrector/environment/{assignmentId}
+ * GET /appealCorrector/environment/{assignmentId}  -> read-only JSON payload
+ * GET /appealCorrector/correction/{assignmentId}   -> correction page (dumb page:
+ *    permission/deadline/feature flag checks belong to the environment endpoint)
  */
 class AppealCorrector extends Controller
 {
@@ -44,5 +46,28 @@ class AppealCorrector extends Controller
         }
 
         $this->json($payload);
+    }
+
+    function GET_correction()
+    {
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        $assignment_id = (int) ($this->data['id'] ?? $this->urlData['id'] ?? 0);
+        if (!$assignment_id) {
+            $app->pass();
+        }
+
+        /** @var RegistrationAppealReview|null $review */
+        $review = $app->repo(RegistrationAppealReview::class)->find($assignment_id);
+        if (!$review) {
+            $app->pass();
+        }
+
+        $this->render('correction', [
+            'assignmentId' => (int) $review->id,
+            'assignment' => $review,
+        ]);
     }
 }
