@@ -163,21 +163,26 @@ app.component('opportunity-appeal-correction-assignment', {
         /**
          * Lista as N avaliações da fase principal da inscrição (uma por avaliador),
          * via API de RegistrationEvaluation (a API filtra por permissão de visão).
-         * Usa leitura raw: os campos escalarizados pelo jsonSerialize (user, agent)
-         * chegam sem transformação do SDK.
+         * Usa leitura raw. Shapes reais da ApiQuery (validados no ambiente):
+         * - `user.{id,profile.name}` volta objeto (subselect ≠ pk): {id, profile:{name}};
+         * - relações selecionadas só como `.id` são ACHATADAS para escalar
+         *   (ex.: user.id → user:35) — por isso todo id é normalizado com
+         *   normalizeId(), que aceita escalar OU objeto.
+         * - `agent` é campo computado do jsonSerialize, não relação: não
+         *   responde a @select — mantido apenas como fallback de leitura.
          */
         async fetchSlots() {
             const api = new API('registrationevaluation');
             const evaluations = await api.fetch('find', {
-                '@select': 'id,user.id,status,result,resultString,registration.{id,number},agent.{id,name}',
+                '@select': 'id,user.{id,profile.name},status,result,resultString,registration.{id,number}',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { rawProcessor: data => data });
 
             this.slots = (evaluations || []).map(evaluation => ({
-                id: evaluation.id,
+                id: this.normalizeId(evaluation.id),
                 user: evaluation.user,
-                agent: evaluation.agent,
+                userId: this.normalizeId(evaluation.user),
                 status: evaluation.status,
                 result: evaluation.result,
                 resultString: evaluation.resultString,
@@ -205,8 +210,11 @@ app.component('opportunity-appeal-correction-assignment', {
                 '@order': 'id ASC',
             }, { rawProcessor: data => data });
 
+            // `originalEvaluation` vem ACHATADO para escalar pela ApiQuery
+            // (evidência: {"originalEvaluation":1}); normalizeId aceita os
+            // dois shapes para o join com os slots.
             this.reviews = (reviews || []).map(review => ({
-                id: review.id,
+                id: this.normalizeId(review.id),
                 originalEvaluationId: this.normalizeId(review.originalEvaluation),
                 status: review.status,
                 correctionType: review.correctionType,
@@ -268,13 +276,17 @@ app.component('opportunity-appeal-correction-assignment', {
         activeReviewForSlot(slot) {
             const active_statuses = this.config.activeStatuses || [0, 1, 3];
             return this.reviews.find(review =>
-                review.originalEvaluationId === slot.id
+                review.originalEvaluationId != null
+                && review.originalEvaluationId === this.normalizeId(slot.id)
                 && active_statuses.includes(this.statusNumber(review))
             ) || null;
         },
 
         reviewForSlot(slot) {
-            return this.reviews.find(review => review.originalEvaluationId === slot.id) || null;
+            return this.reviews.find(review =>
+                review.originalEvaluationId != null
+                && review.originalEvaluationId === this.normalizeId(slot.id)
+            ) || null;
         },
 
         statusNumber(review) {
@@ -335,11 +347,18 @@ app.component('opportunity-appeal-correction-assignment', {
         },
 
         slotUserId(slot) {
-            return this.normalizeId(slot?.user);
+            return slot?.userId ?? this.normalizeId(slot?.user);
         },
 
         slotAgentName(slot) {
-            return slot?.agent?.name || slot?.agent?.email || this.text('slot owner tag');
+            // @select atual traz user.{id,profile.name}; os demais caminhos
+            // são fallbacks defensivos para shapes alternativos da ApiQuery.
+            return slot?.agent?.name
+                || slot?.user?.profile?.name
+                || slot?.user?.name
+                || slot?.agent?.email
+                || slot?.user?.profile?.email
+                || this.text('slot owner tag');
         },
 
         /**
@@ -376,10 +395,45 @@ app.component('opportunity-appeal-correction-assignment', {
                 close();
             } catch (error) {
                 console.error('opportunity-appeal-correction-assignment:saveDesignations', error);
-                messages.error(this.text('save error'));
+                messages.error(this.backendErrorMessage(error) || this.text('save error'));
             } finally {
                 this.saving = false;
             }
+        },
+
+        /**
+         * Extrai a mensagem de erro devolvida pelo backend para exibição.
+         *
+         * Shapes reais: Controller::errorJson responde
+         * {error: true, data: "mensagem"} ou {error: true, data: {campo: msg}}
+         * (validação); aceita também {error: "mensagem"} por defesa.
+         * Retorna null quando não há texto utilizável (caller usa o genérico).
+         */
+        backendErrorMessage(error) {
+            const candidates = [
+                error?.data,
+                error?.error,
+                error?.data?.error,
+            ];
+
+            for (const candidate of candidates) {
+                if (typeof candidate === 'string' && candidate.trim()) {
+                    return candidate.trim();
+                }
+
+                if (candidate && typeof candidate === 'object') {
+                    const messages = Object.values(candidate)
+                        .flat()
+                        .map(value => (typeof value === 'string' ? value.trim() : ''))
+                        .filter(Boolean);
+
+                    if (messages.length) {
+                        return messages.join(' ');
+                    }
+                }
+            }
+
+            return null;
         },
 
         /**
