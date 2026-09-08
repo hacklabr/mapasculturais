@@ -34,6 +34,7 @@ $texts = [
     'saving' => i::__('Salvando designações...'),
     'saved' => i::__('Designações criadas com sucesso.'),
     'save error' => i::__('Não foi possível criar as designações.'),
+    'loading' => i::__('Carregando avaliações...'),
     'endpoint unavailable' => i::__('A criação e o acompanhamento de designações estão temporariamente indisponíveis: a API da entidade de designação (RegistrationAppealReview) ainda não está registrada no backend.'),
 ];
 

@@ -52,8 +52,9 @@ O `init.php` popula o config quando a oportunidade em contexto **é a própria
 fase de recurso** (ativa, com EMC, fase pai técnica, `@control` na fase pai):
 
 - `appealContexts[appealPhaseId] = {mainPhaseId}` — gate da coluna na tabela;
-- `appealPhases[mainPhaseId]` e `committees[mainPhaseId]` — consumo do modal,
-  que recebe a fase principal no evento de abertura e a usa como chave.
+- `appealPhases[mainPhaseId]`, `committees[mainPhaseId]` e
+  `evaluators[mainPhaseId]` — consumo do modal, que recebe a fase principal
+  no evento de abertura e a usa como chave.
 
 No clique, o F1 deriva `{opportunity: fase principal, registration: inscrição
 da fase principal}` a partir da linha do recurso: a inscrição de recurso herda
@@ -67,8 +68,8 @@ inscrição.
 
 | Dado | Fonte | Observação |
 |------|-------|------------|
-| Slots da inscrição | `GET /api/registrationevaluation/find` (`registration=EQ(id)`) | API filtra por permissão de visão |
-| Comissão de Recursos + contexto | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control` na fase pai |
+| Slots da inscrição | `GET /api/registrationevaluation/find` (`registration=EQ(id)`) | API filtra por permissão de visão; leitura **raw** obrigatória (`raw: true` — `rawProcessor` sozinho não ativa o modo raw e o `populate` do SDK descarta relações escalares); a relação `user` volta sempre ESCALAR (não expande) |
+| Comissão de Recursos (`committees`) + avaliadores da fase principal (`evaluators`, mapa `{userId: name}`) + fase de recurso (`appealPhases`) + contexto da coluna (`appealContexts`) | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control` na fase pai; `evaluators` é a fonte dos nomes dos donos de slot (a API de avaliação não expõe nome) |
 | Criação/leitura de designações | API canônica de `registrationappealreview` | **Disponível somente quando `endpointAvailable`** — requer controller registrado para a entidade no backend |
 
 ### Estado bloqueado (`endpointAvailable = false`)
@@ -79,6 +80,14 @@ ficam desabilitados: o modal exibe aviso explícito e o botão de salvar fica
 inativo. O restante da interface (lista de slots e opções de corretor) opera
 normalmente. Quando o controller existir, os fluxos ativam-se sem alteração
 neste componente.
+
+## Estilo
+
+A estrutura do diálogo vem do `mc-modal` (`.modal-content`/`.modal__*` + botões
+`.button--primary`/`.button--text`, responsivo). O conteúdo interno usa classes
+utilitárias do tema (`.semibold`, `.{primary|success|warning|danger}__color`,
+`.warning__background`) e o `style.css` local do componente (auto-enfileirado,
+sem passo de build — mesmo padrão do `mc-modal`), com tokens `--mc-*`.
 
 ## Defaults de criação
 

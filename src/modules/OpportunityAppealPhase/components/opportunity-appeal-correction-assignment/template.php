@@ -7,6 +7,7 @@
 use MapasCulturais\i;
 
 $this->import('
+    mc-alert
     mc-icon
     mc-loading
     mc-modal
@@ -15,50 +16,52 @@ $this->import('
 
 <mc-modal ref="modal" classes="opportunity-appeal-correction-assignment" :title="text('title')" :subtitle="subtitle">
     <template #default="{ close }">
-        <div class="opportunity-appeal-correction-assignment">
-            <div v-if="!endpointAvailable" class="opportunity-appeal-correction-assignment__notice field col-12">
-                <mc-icon name="alert"></mc-icon>
-                {{ text('endpoint unavailable') }}
-            </div>
+        <div class="opportunity-appeal-correction-assignment__content">
+            <mc-alert v-if="!endpointAvailable" type="warning">{{ text('endpoint unavailable') }}</mc-alert>
 
-            <div v-if="!correctionEligible" class="opportunity-appeal-correction-assignment__notice field col-12">
-                <mc-icon name="alert"></mc-icon>
-                {{ text('eligible context required') }}
-            </div>
+            <mc-alert v-if="!correctionEligible" type="warning">{{ text('eligible context required') }}</mc-alert>
 
-            <mc-loading :condition="loading"></mc-loading>
+            <mc-loading :condition="loading">{{ text('loading') }}</mc-loading>
 
-            <div v-if="!loading && !slots.length" class="field col-12">
+            <div v-if="!loading && !slots.length" class="opportunity-appeal-correction-assignment__empty">
                 {{ text('empty slots') }}
             </div>
 
-            <div v-if="!loading && slots.length" class="opportunity-appeal-correction-assignment__progress field col-12 semibold">
+            <div v-if="!loading && slots.length" class="opportunity-appeal-correction-assignment__progress semibold">
+                <mc-icon name="circle" class="primary__color"></mc-icon>
                 {{ progressSummary }}
             </div>
 
-            <div v-if="!loading && slots.length" class="opportunity-appeal-correction-assignment__header grid-12">
-                <div class="col-4"><?= i::__('Avaliação (slot)') ?></div>
-                <div class="col-4"><?= i::__('Corretor designado') ?></div>
-                <div class="col-4"><?= i::__('Acompanhamento') ?></div>
+            <div v-if="!loading && slots.length" class="opportunity-appeal-correction-assignment__header">
+                <div><?= i::__('Avaliação (slot)') ?></div>
+                <div><?= i::__('Corretor designado') ?></div>
+                <div><?= i::__('Acompanhamento') ?></div>
             </div>
 
             <div
                 v-for="slot in slots"
                 :key="slot.id"
-                class="opportunity-appeal-correction-assignment__slot grid-12"
+                class="opportunity-appeal-correction-assignment__slot"
                 :class="{ 'opportunity-appeal-correction-assignment__slot--disabled': !slotSelectable(slot) }">
 
-                <div class="opportunity-appeal-correction-assignment__slot-score col-4">
-                    <label class="field" :for="'correct-slot-' + slot.id" :class="{ 'semibold': slot.checked }">
+                <div class="opportunity-appeal-correction-assignment__slot-score">
+                    <label
+                        class="opportunity-appeal-correction-assignment__slot-check"
+                        :class="{ 'semibold': slot.checked }"
+                        :for="'correct-slot-' + slot.id">
+
                         <input
                             type="checkbox"
                             :id="'correct-slot-' + slot.id"
+                            :name="'correct-slot-' + slot.id"
                             v-model="slot.checked"
                             :disabled="!slotSelectable(slot)">
 
                         <span>
-                            {{ text('correct this score') }}
-                            <span class="semibold">{{ slotAgentName(slot) }}</span>
+                            <span class="semibold">{{ text('correct this score') }}</span>
+                            <span class="opportunity-appeal-correction-assignment__slot-valuer">
+                                {{ slotAgentName(slot) }}
+                            </span>
                         </span>
                     </label>
 
@@ -66,14 +69,19 @@ $this->import('
                         {{ slot.resultString }}
                     </div>
 
-                    <div v-if="activeReviewForSlot(slot)" class="opportunity-appeal-correction-assignment__slot-tag">
+                    <span
+                        v-if="activeReviewForSlot(slot)"
+                        class="opportunity-appeal-correction-assignment__tag warning__background">
                         {{ text('already designated') }}
-                    </div>
+                    </span>
                 </div>
 
-                <div class="opportunity-appeal-correction-assignment__slot-corrector col-4">
+                <div class="opportunity-appeal-correction-assignment__slot-corrector">
                     <select
-                        class="field"
+                        class="opportunity-appeal-correction-assignment__select"
+                        :id="'corrector-select-' + slot.id"
+                        :name="'corrector-select-' + slot.id"
+                        :aria-label="text('select corrector') + ' — ' + slotAgentName(slot)"
                         v-model="slot.correctorUserId"
                         :disabled="!slot.checked || !slotSelectable(slot)">
 
@@ -88,29 +96,33 @@ $this->import('
 
                     <div
                         v-if="slot.checked && !slot.correctorUserId"
-                        class="opportunity-appeal-correction-assignment__slot-hint">
+                        class="opportunity-appeal-correction-assignment__slot-hint danger__color">
                         <?= i::__('Selecione o corretor para salvar esta designação') ?>
                     </div>
                 </div>
 
-                <div class="opportunity-appeal-correction-assignment__slot-status col-4">
+                <div class="opportunity-appeal-correction-assignment__slot-status">
                     <template v-if="reviewForSlot(slot)">
-                        <span
-                            class="opportunity-appeal-correction-assignment__status-label semibold"
+                        <div
+                            class="opportunity-appeal-correction-assignment__status semibold"
                             :class="statusClass(reviewForSlot(slot))">
+
+                            <mc-icon name="circle" :class="statusClass(reviewForSlot(slot))"></mc-icon>
                             {{ statusLabel(reviewForSlot(slot)) }}
-                        </span>
+                        </div>
 
                         <div v-if="reviewDeadline(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__status-detail">
-                            {{ text('deadline') }}: {{ reviewDeadline(reviewForSlot(slot)) }}
+                            <mc-icon name="clock"></mc-icon>
+                            <span><?= i::__('Prazo') ?>: {{ reviewDeadline(reviewForSlot(slot)) }}</span>
                         </div>
 
                         <div v-if="reviewSentAt(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__status-detail">
-                            {{ text('sent at') }}: {{ reviewSentAt(reviewForSlot(slot)) }}
+                            <mc-icon name="send"></mc-icon>
+                            <span><?= i::__('Enviada em') ?>: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
                         </div>
                     </template>
 
-                    <span v-else class="opportunity-appeal-correction-assignment__status-label--empty">
+                    <span v-else class="opportunity-appeal-correction-assignment__status-detail--empty">
                         {{ text('no designation') }}
                     </span>
                 </div>
@@ -119,17 +131,17 @@ $this->import('
     </template>
 
     <template #actions="{ close }">
+        <button class="button button--text" @click="close()">
+            <?= i::__('Cancelar') ?>
+        </button>
+
         <button
-            class="button button--primary"
+            class="button button--md button--primary"
             :class="{ 'disabled': !canSave }"
             :disabled="!canSave"
             @click="saveDesignations(close)">
 
             {{ saving ? text('saving') : text('save') }}
-        </button>
-
-        <button class="button button--text" @click="close()">
-            <?= i::__('Cancelar') ?>
         </button>
     </template>
 </mc-modal>
