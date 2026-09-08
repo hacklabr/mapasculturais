@@ -356,10 +356,11 @@ app.component('opportunity-appeal-correction-assignment', {
         },
 
         /**
-         * Nome do avaliador pelo mapa `evaluators` ({userId: name}) injetado
-         * no init.php (comitê do EMC da fase principal) — a API de avaliação
-         * não expõe nome (relação user não expande). Fallback: Comissão de
-         * Recursos da fase de recurso (config.committees).
+         * Nome do avaliador pelo mapa `evaluators` injetado no init.php —
+         * chaveado por opportunityId (mesma estrutura de `committees`):
+         * {opportunityId: {userId: name}}. A API de avaliação não expõe
+         * nome (relação user não expande). Fallback: Comissão de Recursos
+         * da fase de recurso (config.committees, também por oportunidade).
          */
         evaluatorName(userId) {
             if (userId == null) {
@@ -367,8 +368,12 @@ app.component('opportunity-appeal-correction-assignment', {
             }
 
             const evaluators = this.config.evaluators || {};
-            if (evaluators[userId]) {
-                return evaluators[userId];
+            const name = this.opportunityId != null
+                ? evaluators[this.opportunityId]?.[userId] ?? null
+                : null;
+
+            if (name) {
+                return name;
             }
 
             const committee_member = (this.committee || []).find(member => member.userId === userId);
