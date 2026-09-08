@@ -45,8 +45,8 @@ window.dispatchEvent(new CustomEvent(
 
 | Dado | Fonte | Observação |
 |------|-------|------------|
-| Slots da inscrição | `GET /api/registrationevaluation/find` (`registration=EQ(id)`) | API filtra por permissão de visão |
-| Comissão de Recursos + fase de recurso | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control` |
+| Slots da inscrição | `GET /api/registrationevaluation/find` (`registration=EQ(id)`) | API filtra por permissão de visão; leitura **raw** obrigatória (`raw: true` — `rawProcessor` sozinho não ativa o modo raw e o `populate` do SDK descarta relações escalares); a relação `user` volta sempre ESCALAR (não expande) |
+| Comissão de Recursos (`committees`) + avaliadores da fase principal (`evaluators`, mapa `{userId: name}`) + fase de recurso (`appealPhases`) | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control`; `evaluators` é a fonte dos nomes dos donos de slot (a API de avaliação não expõe nome) |
 | Criação/leitura de designações | API canônica de `registrationappealreview` | **Disponível somente quando `endpointAvailable`** — requer controller registrado para a entidade no backend |
 
 ### Estado bloqueado (`endpointAvailable = false`)

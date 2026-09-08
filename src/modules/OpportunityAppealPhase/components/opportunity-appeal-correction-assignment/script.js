@@ -163,21 +163,24 @@ app.component('opportunity-appeal-correction-assignment', {
         /**
          * Lista as N avaliações da fase principal da inscrição (uma por avaliador),
          * via API de RegistrationEvaluation (a API filtra por permissão de visão).
-         * Usa leitura raw. Shapes reais da ApiQuery (validados no ambiente):
-         * - `user.{id,profile.name}` volta objeto (subselect ≠ pk): {id, profile:{name}};
-         * - relações selecionadas só como `.id` são ACHATADAS para escalar
-         *   (ex.: user.id → user:35) — por isso todo id é normalizado com
-         *   normalizeId(), que aceita escalar OU objeto.
-         * - `agent` é campo computado do jsonSerialize, não relação: não
-         *   responde a @select — mantido apenas como fallback de leitura.
+         *
+         * LEITURA RAW OBRIGATÓRIA: `fetch()` só ativa o modo raw com `raw: true`
+         * nas options (rawProcessor sozinho é ignorado) — sem isso o payload
+         * passa por Entity.populate(), que DESCARTA relações escalares
+         * (user:35 vira undefined) e campos computados (resultString).
+         *
+         * Shapes reais da ApiQuery (evidência de rede): `user` volta ESCALAR
+         * mesmo com select aninhado (expansão não suportada nesta entidade);
+         * `registration` expande como objeto. Nomes de avaliadores vêm do mapa
+         * `evaluators` injetado no init.php, não deste select.
          */
         async fetchSlots() {
             const api = new API('registrationevaluation');
             const evaluations = await api.fetch('find', {
-                '@select': 'id,user.{id,profile.name},status,result,resultString,registration.{id,number}',
+                '@select': 'id,user,status,result,resultString,registration.{id,number}',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
-            }, { rawProcessor: data => data });
+            }, { raw: true, rawProcessor: data => data });
 
             this.slots = (evaluations || []).map(evaluation => ({
                 id: this.normalizeId(evaluation.id),
@@ -197,6 +200,9 @@ app.component('opportunity-appeal-correction-assignment', {
         /**
          * Acompanhamento: designações existentes da inscrição. Disponível
          * somente quando a API da entidade existe (endpointAvailable).
+         * Leitura raw pelo mesmo motivo de fetchSlots: `originalEvaluation`
+         * vem ACHATADO para escalar pela ApiQuery (evidência:
+         * {"originalEvaluation":1}) e o populate do SDK o descartaria.
          */
         async fetchReviews() {
             if (!this.endpointAvailable) {
@@ -208,11 +214,10 @@ app.component('opportunity-appeal-correction-assignment', {
                 '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
-            }, { rawProcessor: data => data });
+            }, { raw: true, rawProcessor: data => data });
 
-            // `originalEvaluation` vem ACHATADO para escalar pela ApiQuery
-            // (evidência: {"originalEvaluation":1}); normalizeId aceita os
-            // dois shapes para o join com os slots.
+            // normalizeId aceita escalar OU objeto — o join com os slots
+            // compara ids normalizados nos dois lados.
             this.reviews = (reviews || []).map(review => ({
                 id: this.normalizeId(review.id),
                 originalEvaluationId: this.normalizeId(review.originalEvaluation),
@@ -350,10 +355,29 @@ app.component('opportunity-appeal-correction-assignment', {
             return slot?.userId ?? this.normalizeId(slot?.user);
         },
 
+        /**
+         * Nome do avaliador pelo mapa `evaluators` ({userId: name}) injetado
+         * no init.php (comitê do EMC da fase principal) — a API de avaliação
+         * não expõe nome (relação user não expande). Fallback: Comissão de
+         * Recursos da fase de recurso (config.committees).
+         */
+        evaluatorName(userId) {
+            if (userId == null) {
+                return null;
+            }
+
+            const evaluators = this.config.evaluators || {};
+            if (evaluators[userId]) {
+                return evaluators[userId];
+            }
+
+            const committee_member = (this.committee || []).find(member => member.userId === userId);
+            return committee_member?.name || null;
+        },
+
         slotAgentName(slot) {
-            // @select atual traz user.{id,profile.name}; os demais caminhos
-            // são fallbacks defensivos para shapes alternativos da ApiQuery.
-            return slot?.agent?.name
+            return this.evaluatorName(this.slotUserId(slot))
+                || slot?.agent?.name
                 || slot?.user?.profile?.name
                 || slot?.user?.name
                 || slot?.agent?.email

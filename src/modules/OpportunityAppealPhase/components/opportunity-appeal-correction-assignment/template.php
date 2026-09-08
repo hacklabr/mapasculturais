@@ -53,6 +53,7 @@ $this->import('
                         <input
                             type="checkbox"
                             :id="'correct-slot-' + slot.id"
+                            :name="'correct-slot-' + slot.id"
                             v-model="slot.checked"
                             :disabled="!slotSelectable(slot)">
 
@@ -78,6 +79,9 @@ $this->import('
                 <div class="opportunity-appeal-correction-assignment__slot-corrector">
                     <select
                         class="opportunity-appeal-correction-assignment__select"
+                        :id="'corrector-select-' + slot.id"
+                        :name="'corrector-select-' + slot.id"
+                        :aria-label="text('select corrector') + ' — ' + slotAgentName(slot)"
                         v-model="slot.correctorUserId"
                         :disabled="!slot.checked || !slotSelectable(slot)">
 

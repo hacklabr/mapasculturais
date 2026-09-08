@@ -31,9 +31,12 @@
  *   fase técnica com fase de recurso ativa e o usuário tem `@control`.
  *
  * Fontes de dados (somente endpoints existentes):
- * - Slots: GET /api/registrationevaluation/find (uma avaliação por avaliador).
- * - Comissão de Recursos: injetada aqui (mesma origem de
- *   RegistrationAppealReview::eligibleCorrectors()).
+ * - Slots: GET /api/registrationevaluation/find (uma avaliação por avaliador;
+ *   a relação `user` volta ESCALAR — o nome do avaliador não vem da API).
+ * - Comissão de Recursos (`committees`) e avaliadores da fase principal
+ *   (`evaluators`, mapa {userId: name}): injetados aqui a partir dos comitês
+ *   das EMCs (mesma origem de RegistrationAppealReview::eligibleCorrectors()
+ *   e da lista de avaliações da oportunidade).
  * - Criação/leitura de RegistrationAppealReview: API canônica da entidade,
  *   disponível somente quando houver controller registrado para ela
  *   (`endpointAvailable` abaixo). Sem controller, salvar e acompanhar ficam
@@ -64,6 +67,12 @@ $config = [
     // opportunityId (fase principal) => membros da Comissão de Recursos:
     // [{userId, name}]. Presente somente em contexto elegível.
     'committees' => new stdClass(),
+
+    // opportunityId (fase principal) => {userId: name} dos avaliadores da
+    // fase principal (comitê do EMC principal). Necessário porque a API de
+    // RegistrationEvaluation não expõe o nome do avaliador (a relação user
+    // não expande no @select — volta sempre escalar).
+    'evaluators' => new stdClass(),
 ];
 
 $requested_entity = $this->controller->requestedEntity ?? null;
@@ -83,6 +92,7 @@ if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
 
     if ($is_eligible_context) {
         $committee = [];
+        $evaluators = new stdClass();
 
         foreach ($appeal_phase->evaluationMethodConfiguration->getCommittee(false) as $agent) {
             $user = $agent->user ?? null;
@@ -96,9 +106,21 @@ if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
             ];
         }
 
+        // Avaliadores da fase principal (donos de slot): comitê do EMC principal.
+        // Mesma fonte de nomes usada pela lista de avaliações da oportunidade.
+        foreach ($main_emc->getCommittee(false) as $agent) {
+            $user = $agent->user ?? null;
+            if (!$user) {
+                continue;
+            }
+
+            $evaluators->{$user->id} = (string) $agent->name;
+        }
+
         $opportunity_id = (int) $opportunity->id;
         $config['appealPhases']->{$opportunity_id} = (int) $appeal_phase->id;
         $config['committees']->{$opportunity_id} = array_values($committee);
+        $config['evaluators']->{$opportunity_id} = $evaluators;
     }
 }
 
