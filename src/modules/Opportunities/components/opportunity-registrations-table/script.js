@@ -95,16 +95,18 @@ app.component('opportunity-registrations-table', {
         let consolidatedResultOrder = 'consolidatedResult';
 
         /*
-            F1 (#17): contexto de designação de correção para recurso deferido.
-            A config é injetada pelo init.php do componente
-            opportunity-appeal-correction-assignment SOMENTE quando o usuário
-            tem @control na fase e há fase de recurso ativa com EMC em fase
-            técnica (mesmos gates de RegistrationAppealReview::eligibleCorrectors()),
-            então a presença da chave já carrega a checagem de permissão.
+            F1 (#17) — override 2026-09-08 (épica #7): a coluna vive na lista
+            de inscritos da FASE DE RECURSO. O contexto (appealContexts) é
+            injetado pelo init.php do componente
+            opportunity-appeal-correction-assignment SOMENTE quando a fase em
+            contexto é a própria fase de recurso ativa, com fase pai técnica,
+            e o usuário tem @control na fase pai (gates espelhados de
+            RegistrationAppealReview::eligibleCorrectors()) — a presença da
+            chave já carrega a checagem de permissão.
         */
         const appeal_correction_config = $MAPAS.config.appealCorrectionAssignment || {};
-        const appeal_phase_id = appeal_correction_config.appealPhases?.[this.phase.id] ?? null;
-        const appeal_correction_enabled = appeal_phase_id != null;
+        const appeal_context = appeal_correction_config.appealContexts?.[this.phase.id] ?? null;
+        const appeal_correction_enabled = appeal_context != null;
 
         const fieldTypes = ['select', 'boolean', 'checkbox', 'multiselect', 'checkboxes', 'agent-owner-field', 'agent-collective-field'];
 
@@ -220,8 +222,8 @@ app.component('opportunity-registrations-table', {
             avaliableFields,
             visible,
             appealCorrectionEnabled: appeal_correction_enabled,
-            appealPhaseId: appeal_phase_id,
-            deferredAppealNumbers: [],
+            appealMainPhaseId: appeal_context?.mainPhaseId ?? null,
+            appealMainRegistrations: {},
             isAffirmativePoliciesActive,
             hadTechnicalEvaluationPhase,
             isTechnicalEvaluationPhase,
@@ -428,13 +430,6 @@ app.component('opportunity-registrations-table', {
         },
     },
 
-    mounted() {
-        // F1 (#17): carrega os números com recurso deferido apenas no contexto elegível
-        if (this.appealCorrectionEnabled) {
-            this.fetchDeferredAppealNumbers();
-        }
-    },
-
     methods: {
         getStatus(actualStatus) {
             return this.statusDict.find(status => status.value === actualStatus);
@@ -621,52 +616,74 @@ app.component('opportunity-registrations-table', {
         },
 
         /**
-         * F1 (#17): números das inscrições da fase de recurso com status
-         * deferido (STATUS_APPROVED rotulado como "Deferido" no contexto de
-         * recurso). A inscrição da fase de recurso herda o `number` da
-         * inscrição da fase principal (createAppealPhaseRegistration), então
-         * o número identifica a inscrição nas duas fases.
+         * F1 (#17) — override 2026-09-08: o botão vive na linha do recurso
+         * com status Deferido (10) da lista da fase de recurso. Abre o modal
+         * de designação (F2) pela interface pública documentada no init.php
+         * do componente opportunity-appeal-correction-assignment, com
+         * {opportunity: fase PRINCIPAL, registration: inscrição da fase
+         * PRINCIPAL} — ambos derivados da linha da fase de recurso. O modal
+         * decide o que exibir (designação ou acompanhamento).
          */
-        async fetchDeferredAppealNumbers() {
+        async openAppealCorrectionAssignment(entity) {
+            const main_registration = await this.findMainPhaseRegistration(entity);
+
+            if (!main_registration) {
+                return;
+            }
+
+            window.dispatchEvent(new CustomEvent('opportunity-appeal-correction-assignment:open', {
+                detail: {
+                    opportunity: { id: this.appealMainPhaseId },
+                    registration: { id: main_registration.id, number: main_registration.number },
+                },
+            }));
+        },
+
+        /**
+         * F1 (#17): deriva a inscrição da fase principal a partir da
+         * inscrição da fase de recurso. A inscrição de recurso herda o
+         * `number` da inscrição principal (createAppealPhaseRegistration,
+         * OpportunityAppealPhase/Module.php:201) e não existe meta/relation
+         * armazenada ligando as duas — o casamento por `number` na fase pai
+         * é o mecanismo canônico do backend (Module.php:240-243). Uma
+         * chamada por inscrição, cacheada para cliques repetidos.
+         */
+        async findMainPhaseRegistration(appealRegistration) {
+            const appeal_registration_id = appealRegistration?.id;
+
+            if (!appeal_registration_id || !this.appealMainPhaseId) {
+                return null;
+            }
+
+            if (this.appealMainRegistrations[appeal_registration_id]) {
+                return this.appealMainRegistrations[appeal_registration_id];
+            }
+
             const api = new API('registration');
 
             try {
-                const appeals = await api.find({
-                    'opportunity': `EQ(${this.appealPhaseId})`,
-                    'status': 'EQ(10)',
-                    '@select': 'number',
-                    '@order': 'number ASC',
+                const found = await api.find({
+                    'opportunity': `EQ(${this.appealMainPhaseId})`,
+                    'number': `EQ(${appealRegistration.number})`,
+                    '@select': 'id,number',
                     '@permissions': 'view',
                 });
 
-                this.deferredAppealNumbers = (appeals || [])
-                    .map(appeal => appeal.number)
-                    .filter(Boolean);
+                const main_registration = (found || [])[0] || null;
+
+                if (!main_registration) {
+                    throw new Error(`inscrição da fase principal não encontrada (number=${appealRegistration.number})`);
+                }
+
+                this.appealMainRegistrations[appeal_registration_id] = main_registration;
+
+                return main_registration;
             } catch (error) {
-                console.error('opportunity-registrations-table:fetchDeferredAppealNumbers', error);
+                console.error('opportunity-registrations-table:findMainPhaseRegistration', error);
+                this.messages.error(this.text('inscrição da fase principal não encontrada'));
+
+                return null;
             }
-        },
-
-        /**
-         * F1 (#17): a inscrição da fase principal teve recurso deferido?
-         */
-        hasDeferredAppeal(entity) {
-            return this.deferredAppealNumbers.includes(entity?.number);
-        },
-
-        /**
-         * F1 (#17): abre o modal de designação (F2) pela interface pública
-         * documentada no init.php do componente
-         * opportunity-appeal-correction-assignment. O modal decide o que
-         * exibir (designação ou acompanhamento de designações existentes).
-         */
-        openAppealCorrectionAssignment(entity) {
-            window.dispatchEvent(new CustomEvent('opportunity-appeal-correction-assignment:open', {
-                detail: {
-                    opportunity: this.phase,
-                    registration: entity,
-                },
-            }));
         }
     }
 });

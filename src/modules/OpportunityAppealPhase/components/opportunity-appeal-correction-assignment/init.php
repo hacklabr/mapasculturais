@@ -30,6 +30,22 @@
  * - A designação só fica habilitada quando a oportunidade em contexto é uma
  *   fase técnica com fase de recurso ativa e o usuário tem `@control`.
  *
+ * Contexto F1 (#17) — override 2026-09-08 (épica #7, @israelmelo):
+ * a coluna "Designar correção" vive na lista de inscritos da FASE DE
+ * RECURSO (cada linha É um recurso; botão somente nas linhas com status
+ * Deferido = 10). Por isso o gate abaixo exige que a oportunidade em
+ * contexto SEJA a própria fase de recurso, e o config expose:
+ * - `appealContexts[appealPhaseId] = {mainPhaseId}` — consumido pela tabela
+ *   (opportunity-registrations-table) para decidir se a coluna aparece;
+ * - `appealPhases[mainPhaseId] = appealPhaseId` e
+ *   `committees[mainPhaseId]` — consumidos pelo modal, que recebe a fase
+ *   PRINCIPAL no evento de abertura e a usa como chave.
+ * Da linha da fase de recurso, o F1 deriva a inscrição da fase principal
+ * pelo `number` herdado (createAppealPhaseRegistration,
+ * OpportunityAppealPhase/Module.php:201) — mesmo mecanismo canônico do
+ * backend (Module.php:240-243); não existe meta/relation armazenada
+ * ligando recurso → inscrição principal.
+ *
  * Fontes de dados (somente endpoints existentes):
  * - Slots: GET /api/registrationevaluation/find (uma avaliação por avaliador).
  * - Comissão de Recursos: injetada aqui (mesma origem de
@@ -64,22 +80,35 @@ $config = [
     // opportunityId (fase principal) => membros da Comissão de Recursos:
     // [{userId, name}]. Presente somente em contexto elegível.
     'committees' => new stdClass(),
+
+    // F1 (#17) — override 2026-09-08: id da FASE DE RECURSO =>
+    // {mainPhaseId: int}. Consumido pela opportunity-registrations-table
+    // para exibir a coluna de designação na lista de inscritos da fase de
+    // recurso; presente somente em contexto elegível.
+    'appealContexts' => new stdClass(),
 ];
 
 $requested_entity = $this->controller->requestedEntity ?? null;
 $opportunity = $requested_entity ? $this->getOpportunityFromEntity($requested_entity) : null;
 
-if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
-    $appeal_phase = $opportunity->appealPhase ?? null;
-    $main_emc = $opportunity->evaluationMethodConfiguration;
+/*
+    F1 (#17) — override 2026-09-08 (épica #7): a coluna "Designar correção"
+    pertence à lista de inscritos da FASE DE RECURSO, não à da fase
+    principal. Contexto elegível: a oportunidade em contexto É a fase de
+    recurso ativa (STATUS_APPEAL_PHASE), com EMC, cuja fase pai é técnica
+    com EMC, e o usuário tem @control na fase pai (onde @control cascateia
+    para a fase de recurso). Gates espelhados de
+    RegistrationAppealReview::eligibleCorrectors().
+*/
+if ($opportunity instanceof Opportunity && $opportunity->status === Opportunity::STATUS_APPEAL_PHASE) {
+    $appeal_phase = $opportunity;
+    $main_phase = $appeal_phase->parent ?? null;
 
-    // Espelha os gates de RegistrationAppealReview::eligibleCorrectors():
-    // fase principal com método técnico + fase de recurso ativa com EMC.
-    $is_eligible_context = $appeal_phase
-        && $appeal_phase->status === Opportunity::STATUS_APPEAL_PHASE
+    $is_eligible_context = $main_phase
         && $appeal_phase->evaluationMethodConfiguration
-        && $main_emc
-        && $main_emc->type->id === 'technical';
+        && $main_phase->evaluationMethodConfiguration
+        && $main_phase->evaluationMethodConfiguration->type->id === 'technical'
+        && $main_phase->canUser('@control');
 
     if ($is_eligible_context) {
         $committee = [];
@@ -96,9 +125,15 @@ if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
             ];
         }
 
-        $opportunity_id = (int) $opportunity->id;
-        $config['appealPhases']->{$opportunity_id} = (int) $appeal_phase->id;
-        $config['committees']->{$opportunity_id} = array_values($committee);
+        $appeal_phase_id = (int) $appeal_phase->id;
+        $main_phase_id = (int) $main_phase->id;
+
+        // Modal (chaveado pela fase principal, recebida no evento de abertura)
+        $config['appealPhases']->{$main_phase_id} = $appeal_phase_id;
+        $config['committees']->{$main_phase_id} = array_values($committee);
+
+        // Tabela da fase de recurso (chaveada pela própria fase de recurso)
+        $config['appealContexts']->{$appeal_phase_id} = ['mainPhaseId' => $main_phase_id];
     }
 }
 

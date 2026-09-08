@@ -39,4 +39,5 @@ return [
     'Elegível para cotas' => i::__('Elegível para cotas'),
     'Elegível para as cotas' => i::__('Elegível para cotas'),
     'Designar correção' => i::__('Designar correção'),
+    'inscrição da fase principal não encontrada' => i::__('Não foi possível localizar a inscrição da fase principal deste recurso'),
 ];
