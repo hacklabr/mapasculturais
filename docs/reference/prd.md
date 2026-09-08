@@ -157,7 +157,7 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 
 | # | Critério de aceitação |
 |---|----------------------|
-| CA-1 | Gestor com `@control` na oportunidade vê, na lista de inscritos, ação de designação de correção **apenas** para inscrições com recurso deferido. |
+| CA-1 | Gestor com `@control` na oportunidade vê, na lista de inscritos **da fase de recurso**, ação de designação de correção **apenas** para inscrições com recurso deferido. |
 | CA-2 | Modal de designação lista apenas as `RegistrationEvaluation` da fase principal daquela inscrição, uma por avaliador. |
 | CA-3 | Por slot, o gestor só pode designar como corretor: (a) o dono daquele slot; ou (b) membro da Comissão de Recursos. Avaliadores de outros slots da mesma inscrição são rejeitados. |
 | CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos. |
