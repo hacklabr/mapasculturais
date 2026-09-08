@@ -146,6 +146,36 @@
     opacity: .5;
 }
 
+/* F5 (#45): ações de gestão (substituir/cancelar) e substituição inline */
+.opportunity-appeal-correction-assignment__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    margin-top: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__actions .button {
+    padding-block: .25rem;
+}
+
+.opportunity-appeal-correction-assignment__substitution {
+    background-color: #fff;
+    border: 1px dashed var(--mc-gray-300);
+    border-radius: var(--mc-border-radius-xs);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: .5rem;
+    padding: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__substitution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
 /* Mesmo breakpoint do mc-modal/.grid-12 (800px): linhas empilham. */
 @media (max-width: 800px) {
     .opportunity-appeal-correction-assignment__header {
