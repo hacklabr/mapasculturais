@@ -300,4 +300,52 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->expectException(PermissionDenied::class);
         (new CorrectorEnvironment())->build($scenario['review']);
     }
+
+    function testPayloadExposesCriteriaMetadataAndSlotIdentity(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['corrector']);
+
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertEquals((int) $scenario['slotA']->id, $payload['evaluationId']);
+        $this->assertEquals((int) $scenario['registration']->id, $payload['registrationId']);
+        $this->assertEquals($scenario['registration']->number, $payload['registrationNumber']);
+        $this->assertNotEmpty($payload['opportunityName']);
+
+        $this->assertIsArray($payload['criteria']);
+        $this->assertCount(1, $payload['criteria']);
+
+        $criteria_ids = array_map(static fn ($criterion) => $criterion['id'], $payload['criteria']);
+        $this->assertEquals(['c-1'], $criteria_ids);
+
+        $criterion = $payload['criteria'][0];
+        $this->assertEquals('Critério 1', $criterion['title']);
+        $this->assertEquals(10, $criterion['max']);
+        $this->assertEquals(1, $criterion['weight']);
+        $this->assertEquals('sec-1', $criterion['sectionId']);
+        $this->assertEquals('Seção 1', $criterion['sectionName']);
+    }
+
+    function testCorrectionPageRendersForCorrector(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['corrector']);
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'correction',
+            [$scenario['review']->id],
+            ajax: false
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(200, $app->response->getStatusCode());
+        $body = (string) $app->response->getBody();
+        $this->assertStringContainsString('opportunity-appeal-correction-evaluation', $body);
+        $this->assertStringContainsString((string) $scenario['review']->id, $body);
+    }
 }
