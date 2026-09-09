@@ -120,6 +120,48 @@ $this->import('
                             class="opportunity-appeal-correction-assignment__slot-hint danger__color">
                             <?= i::__('Selecione o corretor para salvar esta designação') ?>
                         </div>
+
+                        <!-- F6 (#49): seletor de escopo (só para métodos com critérios) -->
+                        <div v-if="slot.checked && hasCriteriaSelector" class="opportunity-appeal-correction-assignment__scope">
+                            <button
+                                type="button"
+                                class="button button--sm button--text primary__color"
+                                @click="slot.scopeOpen = !slot.scopeOpen">
+
+                                <mc-icon :name="slot.scopeOpen ? 'arrow-up' : 'arrow-down'"></mc-icon>
+                                {{ text('criteria scope') }} ({{ slotScopeCount(slot) }}/{{ criteriaCatalog.total }})
+                            </button>
+
+                            <div v-if="slot.scopeOpen" class="opportunity-appeal-correction-assignment__scope-list">
+                                <div
+                                    v-for="section in criteriaCatalog.sections"
+                                    :key="section.id || section.name"
+                                    class="opportunity-appeal-correction-assignment__scope-section">
+
+                                    <div v-if="section.name" class="semibold">{{ section.name }}</div>
+
+                                    <label
+                                        v-for="item in section.items"
+                                        :key="item.id"
+                                        class="opportunity-appeal-correction-assignment__scope-item"
+                                        :for="'scope-' + slot.id + '-' + item.id">
+
+                                        <input
+                                            type="checkbox"
+                                            :id="'scope-' + slot.id + '-' + item.id"
+                                            :name="'scope-' + slot.id + '[]'"
+                                            :value="item.id"
+                                            v-model="slot.scopeCriteria">
+
+                                        <span>{{ item.label }}</span>
+                                    </label>
+                                </div>
+
+                                <div v-if="scopeInvalidFrom(slot.scopeCriteria)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                    {{ text('select at least one criterion') }}
+                                </div>
+                            </div>
+                        </div>
                     </template>
                 </div>
 
@@ -146,6 +188,12 @@ $this->import('
                         <div v-if="reviewSentAt(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__status-detail">
                             <mc-icon name="send"></mc-icon>
                             <span><?= i::__('Enviada em') ?>: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
+                        </div>
+
+                        <!-- F6: escopo da designação (todos liberados / X de Y) -->
+                        <div class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="list"></mc-icon>
+                            <span>{{ reviewScopeLabel(reviewForSlot(slot)) }}</span>
                         </div>
 
                         <!-- F5 (#45): gestão de designação ativa (substituir/cancelar) — únicos controles ativos da linha -->
@@ -197,6 +245,48 @@ $this->import('
 
                             <div v-if="slot.substituteUserId == null" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
                                 <?= i::__('Selecione o novo corretor para confirmar') ?>
+                            </div>
+
+                            <!-- F6: escopo pré-preenchido com o vigente na substituição -->
+                            <div v-if="hasCriteriaSelector" class="opportunity-appeal-correction-assignment__scope">
+                                <button
+                                    type="button"
+                                    class="button button--sm button--text primary__color"
+                                    @click="slot.substituteScopeOpen = !slot.substituteScopeOpen">
+
+                                    <mc-icon :name="slot.substituteScopeOpen ? 'arrow-up' : 'arrow-down'"></mc-icon>
+                                    {{ text('criteria scope') }} ({{ (slot.substituteScopeCriteria || []).length }}/{{ criteriaCatalog.total }})
+                                </button>
+
+                                <div v-if="slot.substituteScopeOpen" class="opportunity-appeal-correction-assignment__scope-list">
+                                    <div
+                                        v-for="section in criteriaCatalog.sections"
+                                        :key="section.id || section.name"
+                                        class="opportunity-appeal-correction-assignment__scope-section">
+
+                                        <div v-if="section.name" class="semibold">{{ section.name }}</div>
+
+                                        <label
+                                            v-for="item in section.items"
+                                            :key="item.id"
+                                            class="opportunity-appeal-correction-assignment__scope-item"
+                                            :for="'substitute-scope-' + slot.id + '-' + item.id">
+
+                                            <input
+                                                type="checkbox"
+                                                :id="'substitute-scope-' + slot.id + '-' + item.id"
+                                                :name="'substitute-scope-' + slot.id + '[]'"
+                                                :value="item.id"
+                                                v-model="slot.substituteScopeCriteria">
+
+                                            <span>{{ item.label }}</span>
+                                        </label>
+                                    </div>
+
+                                    <div v-if="scopeInvalidFrom(slot.substituteScopeCriteria)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                        {{ text('select at least one criterion') }}
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="opportunity-appeal-correction-assignment__substitution-actions">

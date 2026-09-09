@@ -352,7 +352,9 @@ class RegistrationAppealReview extends EntityController
             }
         }
 
-        if (isset($data['releasedScope'])) {
+        // F6: array_key_exists (não isset) para que releasedScope null LIMPE
+        // a restrição na substituição (todos os critérios liberados).
+        if (array_key_exists('releasedScope', $data)) {
             $review->releasedScope = $this->parseReleasedScope($data['releasedScope']);
             unset($data['releasedScope']);
         }
@@ -465,12 +467,17 @@ class RegistrationAppealReview extends EntityController
 
     /**
      * @param mixed $value array/objeto já decodificado ou string JSON.
+     *
+     * F6 (#49): escopo com lista de critérios explícita e vazia é rejeitado
+     * (null = sem restrição; ao menos um critério quando houver restrição).
      */
     private function parseReleasedScope(mixed $value): ?object
     {
         if ($value === null || $value === '') {
             return null;
         }
+
+        $scope = null;
 
         if (is_string($value)) {
             $decoded = json_decode($value);
@@ -479,10 +486,18 @@ class RegistrationAppealReview extends EntityController
                 $this->errorJson(i::__('releasedScope inválido: esperado objeto JSON.'), 400);
             }
 
-            return $decoded;
+            $scope = $decoded;
+        } else {
+            $scope = (object) (array) $value;
         }
 
-        return (object) (array) $value;
+        $criteria = $scope->criteria ?? $scope->fields ?? null;
+
+        if ($criteria !== null && count((array) $criteria) === 0) {
+            $this->errorJson(i::__('O escopo de critérios não pode ser vazio: selecione ao menos um critério ou envie a designação sem restrição (releasedScope nulo libera todos).'), 400);
+        }
+
+        return $scope;
     }
 
     private function parseDateParam(mixed $value): ?DateTime
