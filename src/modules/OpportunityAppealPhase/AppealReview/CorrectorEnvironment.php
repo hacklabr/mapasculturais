@@ -41,6 +41,11 @@ class CorrectorEnvironment
 
         $payload = [
             'assignmentId' => (int) $review->id,
+            'evaluationId' => (int) $slot->id,
+            'registrationId' => (int) $review->registration->id,
+            'registrationNumber' => $review->registration->number,
+            'opportunityName' => (string) $review->registration->opportunity->name,
+            'criteria' => $this->buildCriteriaMetadata($slot, $scope_ids),
             'targetEvaluatorName' => $this->resolveEvaluatorName($review),
             'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
             'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
@@ -100,6 +105,72 @@ class CorrectorEnvironment
         }
 
         return $owner ? (string) $owner->email : '';
+    }
+
+    /**
+     * Metadata of the criteria released for correction, from the MAIN phase
+     * evaluation method configuration (not the appeal phase). Criteria ids in
+     * the scope that do not exist in the configuration are ignored.
+     *
+     * @param string[]|null $scope_ids null = all criteria
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCriteriaMetadata(RegistrationEvaluation $slot, ?array $scope_ids): array
+    {
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        if (!$emc) {
+            return [];
+        }
+
+        $sections = $emc->sections ?? [];
+        $criteria = $emc->criteria ?? [];
+
+        // metadata may still be raw JSON strings before unserialize (same normalization
+        // as EvaluationMethodConfiguration::validateCriteriaSectionsIntegrity)
+        if (is_string($sections)) {
+            $sections = json_decode($sections);
+        }
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        $sections = (array) $sections;
+        $criteria = (array) $criteria;
+
+        $section_names = [];
+        foreach ($sections as $section) {
+            $section = (object) $section;
+            if (isset($section->id)) {
+                $section_names[(string) $section->id] = (string) ($section->name ?? '');
+            }
+        }
+
+        $out = [];
+        foreach ($criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (!isset($criterion->id)) {
+                continue;
+            }
+
+            $id = (string) $criterion->id;
+            if ($scope_ids !== null && !in_array($id, $scope_ids, true)) {
+                continue;
+            }
+
+            $sid = isset($criterion->sid) ? (string) $criterion->sid : null;
+
+            $out[] = [
+                'id' => $id,
+                'title' => (string) ($criterion->title ?? $id),
+                'min' => (float) ($criterion->min ?? 0),
+                'max' => (float) ($criterion->max ?? 0),
+                'weight' => (float) ($criterion->weight ?? 1),
+                'sectionId' => $sid,
+                'sectionName' => $sid !== null ? ($section_names[$sid] ?? '') : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**

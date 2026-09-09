@@ -364,6 +364,9 @@ class Module extends \MapasCulturais\Module {
 
         $app->registerController('appealCorrector', \OpportunityAppealPhase\Controllers\AppealCorrector::class);
 
+        // PR6 (#40): API de designação de corretores por slot (criação + listagem do painel do F2).
+        $app->registerController('registrationappealreview', \OpportunityAppealPhase\Controllers\RegistrationAppealReview::class);
+
         $this->registerOpportunityMetadata('appealPhase', [
             'label' => i::__('Fase de recurso'),
             'type'  => 'entity'
