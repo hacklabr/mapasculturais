@@ -27,8 +27,25 @@
  *   `$this->import('opportunity-appeal-correction-assignment');`
  *   seguido de `<opportunity-appeal-correction-assignment></opportunity-appeal-correction-assignment>`
  *   (o listener do evento é registrado no mounted() do Vue).
- * - A designação só fica habilitada quando a oportunidade em contexto é uma
- *   fase técnica com fase de recurso ativa e o usuário tem `@control`.
+ * - A designação só fica habilitada quando a oportunidade em contexto é a
+ *   fase de recurso ativa de uma fase técnica e o usuário tem `@control`
+ *   na fase pai (onde @control cascateia para a fase de recurso).
+ *
+ * Contexto F1 (#17) — override 2026-09-08 (épica #7, @israelmelo):
+ * a coluna "Designar correção" vive na lista de inscritos da FASE DE
+ * RECURSO (cada linha É um recurso; botão somente nas linhas com status
+ * Deferido = 10). Por isso o gate abaixo exige que a oportunidade em
+ * contexto SEJA a própria fase de recurso, e o config expose:
+ * - `appealContexts[appealPhaseId] = {mainPhaseId}` — consumido pela tabela
+ *   (opportunity-registrations-table) para decidir se a coluna aparece;
+ * - `appealPhases[mainPhaseId] = appealPhaseId`, `committees[mainPhaseId]`
+ *   e `evaluators[mainPhaseId]` — consumidos pelo modal, que recebe a fase
+ *   PRINCIPAL no evento de abertura e a usa como chave.
+ * Da linha da fase de recurso, o F1 deriva a inscrição da fase principal
+ * pelo `number` herdado (createAppealPhaseRegistration,
+ * OpportunityAppealPhase/Module.php:201) — mesmo mecanismo canônico do
+ * backend (Module.php:240-243); não existe meta/relation armazenada
+ * ligando recurso → inscrição principal.
  *
  * Fontes de dados (somente endpoints existentes):
  * - Slots: GET /api/registrationevaluation/find (uma avaliação por avaliador;
@@ -68,6 +85,12 @@ $config = [
     // [{userId, name}]. Presente somente em contexto elegível.
     'committees' => new stdClass(),
 
+    // F1 (#17) — override 2026-09-08: id da FASE DE RECURSO =>
+    // {mainPhaseId: int}. Consumido pela opportunity-registrations-table
+    // para exibir a coluna de designação na lista de inscritos da fase de
+    // recurso; presente somente em contexto elegível.
+    'appealContexts' => new stdClass(),
+
     // opportunityId (fase principal) => {userId: name} dos avaliadores da
     // fase principal (comitê do EMC principal). Necessário porque a API de
     // RegistrationEvaluation não expõe o nome do avaliador (a relação user
@@ -78,17 +101,24 @@ $config = [
 $requested_entity = $this->controller->requestedEntity ?? null;
 $opportunity = $requested_entity ? $this->getOpportunityFromEntity($requested_entity) : null;
 
-if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
-    $appeal_phase = $opportunity->appealPhase ?? null;
-    $main_emc = $opportunity->evaluationMethodConfiguration;
+/*
+    F1 (#17) — override 2026-09-08 (épica #7): a coluna "Designar correção"
+    pertence à lista de inscritos da FASE DE RECURSO, não à da fase
+    principal. Contexto elegível: a oportunidade em contexto É a fase de
+    recurso ativa (STATUS_APPEAL_PHASE), com EMC, cuja fase pai é técnica
+    com EMC, e o usuário tem @control na fase pai (onde @control cascateia
+    para a fase de recurso). Gates espelhados de
+    RegistrationAppealReview::eligibleCorrectors().
+*/
+if ($opportunity instanceof Opportunity && $opportunity->status === Opportunity::STATUS_APPEAL_PHASE) {
+    $appeal_phase = $opportunity;
+    $main_phase = $appeal_phase->parent ?? null;
 
-    // Espelha os gates de RegistrationAppealReview::eligibleCorrectors():
-    // fase principal com método técnico + fase de recurso ativa com EMC.
-    $is_eligible_context = $appeal_phase
-        && $appeal_phase->status === Opportunity::STATUS_APPEAL_PHASE
+    $is_eligible_context = $main_phase
         && $appeal_phase->evaluationMethodConfiguration
-        && $main_emc
-        && $main_emc->type->id === 'technical';
+        && $main_phase->evaluationMethodConfiguration
+        && $main_phase->evaluationMethodConfiguration->type->id === 'technical'
+        && $main_phase->canUser('@control');
 
     if ($is_eligible_context) {
         $committee = [];
@@ -106,9 +136,10 @@ if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
             ];
         }
 
-        // Avaliadores da fase principal (donos de slot): comitê do EMC principal.
-        // Mesma fonte de nomes usada pela lista de avaliações da oportunidade.
-        foreach ($main_emc->getCommittee(false) as $agent) {
+        // Avaliadores da fase principal (donos de slot): comitê do EMC
+        // principal (na árvore do parent, pois o contexto é a fase de
+        // recurso). Mesma fonte de nomes usada pela lista de avaliações.
+        foreach ($main_phase->evaluationMethodConfiguration->getCommittee(false) as $agent) {
             $user = $agent->user ?? null;
             if (!$user) {
                 continue;
@@ -117,10 +148,16 @@ if ($opportunity instanceof Opportunity && $opportunity->canUser('@control')) {
             $evaluators->{$user->id} = (string) $agent->name;
         }
 
-        $opportunity_id = (int) $opportunity->id;
-        $config['appealPhases']->{$opportunity_id} = (int) $appeal_phase->id;
-        $config['committees']->{$opportunity_id} = array_values($committee);
-        $config['evaluators']->{$opportunity_id} = $evaluators;
+        $appeal_phase_id = (int) $appeal_phase->id;
+        $main_phase_id = (int) $main_phase->id;
+
+        // Modal (chaveado pela fase principal, recebida no evento de abertura)
+        $config['appealPhases']->{$main_phase_id} = $appeal_phase_id;
+        $config['committees']->{$main_phase_id} = array_values($committee);
+        $config['evaluators']->{$main_phase_id} = $evaluators;
+
+        // Tabela da fase de recurso (chaveada pela própria fase de recurso)
+        $config['appealContexts']->{$appeal_phase_id} = ['mainPhaseId' => $main_phase_id];
     }
 }
 

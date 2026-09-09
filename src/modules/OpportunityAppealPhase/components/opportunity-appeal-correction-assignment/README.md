@@ -41,12 +41,35 @@ window.dispatchEvent(new CustomEvent(
 |----------|---------|--------|
 | `saved`  | `{registrationId}` | Após criar todas as designações marcadas com sucesso |
 
+## Integração F1 (#17) — botão na lista de inscritos da fase de recurso
+
+Override 2026-09-08 (épica #7): a coluna "Designar correção" vive na lista de
+inscritos **da fase de recurso** (`opportunity-registrations-table`), não na da
+fase principal. Cada linha é um recurso; o botão aparece **somente nas linhas
+com status Deferido (10)** — valor nativo da lista, sem fetch extra.
+
+O `init.php` popula o config quando a oportunidade em contexto **é a própria
+fase de recurso** (ativa, com EMC, fase pai técnica, `@control` na fase pai):
+
+- `appealContexts[appealPhaseId] = {mainPhaseId}` — gate da coluna na tabela;
+- `appealPhases[mainPhaseId]`, `committees[mainPhaseId]` e
+  `evaluators[mainPhaseId]` — consumo do modal, que recebe a fase principal
+  no evento de abertura e a usa como chave.
+
+No clique, o F1 deriva `{opportunity: fase principal, registration: inscrição
+da fase principal}` a partir da linha do recurso: a inscrição de recurso herda
+o `number` da inscrição principal (`createAppealPhaseRegistration`,
+`OpportunityAppealPhase/Module.php:201`) e não há meta/relation armazenada
+ligando as duas — o casamento por `number` na fase pai é o mecanismo canônico
+do backend (`Module.php:240-243`), replicado aqui em 1 chamada cacheada por
+inscrição.
+
 ## Fontes de dados (somente endpoints existentes)
 
 | Dado | Fonte | Observação |
 |------|-------|------------|
 | Slots da inscrição | `GET /api/registrationevaluation/find` (`registration=EQ(id)`) | API filtra por permissão de visão; leitura **raw** obrigatória (`raw: true` — `rawProcessor` sozinho não ativa o modo raw e o `populate` do SDK descarta relações escalares); a relação `user` volta sempre ESCALAR (não expande) |
-| Comissão de Recursos (`committees`) + avaliadores da fase principal (`evaluators`, mapa `{userId: name}`) + fase de recurso (`appealPhases`) | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control`; `evaluators` é a fonte dos nomes dos donos de slot (a API de avaliação não expõe nome) |
+| Comissão de Recursos (`committees`) + avaliadores da fase principal (`evaluators`, mapa `{userId: name}`) + fase de recurso (`appealPhases`) + contexto da coluna (`appealContexts`) | Injeção do `init.php` (`$MAPAS.config.appealCorrectionAssignment`) | Espelha os gates de `eligibleCorrectors()`; exige `@control` na fase pai; `evaluators` é a fonte dos nomes dos donos de slot (a API de avaliação não expõe nome) |
 | Criação/leitura de designações | API canônica de `registrationappealreview` | **Disponível somente quando `endpointAvailable`** — requer controller registrado para a entidade no backend |
 
 ### Estado bloqueado (`endpointAvailable = false`)
