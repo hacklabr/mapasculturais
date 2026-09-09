@@ -107,6 +107,28 @@ atual e duas ações:
 
 Slot com status **enviado** (2) não exibe ações.
 
+## Escopo de critérios (F6 / #49, Variante 3)
+
+Elegibilidade aberta a **todos** os métodos de avaliação (gate técnico
+removido de `eligibleCorrectors()` e do `init.php`). O seletor de escopo
+(`criteriaCatalogs` do config, injetado por `init.php`) existe somente para:
+
+| Método | Seletor | Fonte dos itens |
+|--------|---------|-----------------|
+| Técnica | Sim — seções/critérios do EMC principal | `EvaluationMethodTechnical` (chave do evaluationData = id do critério) |
+| Qualificação documental | Sim — campos e documentos das fases | `EvaluationMethodDocumentary` (chave = `fieldName`/`fileGroupName`) |
+| Demais (simples etc.) | Não — nada renderiza | `releasedScope` nulo ("abre tudo") |
+
+**Semântica persistida em `releasedScope`**: TODOS os critérios marcados →
+`null` (= sem restrição, compatível com `getReleasedCriteriaIds()` do
+`AppealReview\Service`); subconjunto → `{criteria: [...]}`; seleção VAZIA é
+rejeitada — no cliente (salvar bloqueado com aviso) e no backend
+(`parseReleasedScope` → 400 "O escopo de critérios não pode ser vazio…").
+Na substituição (F5) a checklist vem pré-preenchida com o escopo vigente e o
+PATCH envia `releasedScope` junto (`null` LIMPA a restrição — o controller
+usa `array_key_exists`). O painel de acompanhamento exibe "X de Y critérios"
+(restrito) ou "todos liberados" (nulo).
+
 ## Defaults de criação
 
 Por linha marcada cria-se: `status=DESIGNATED`, `correctionType=official`

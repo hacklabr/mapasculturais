@@ -79,6 +79,24 @@ app.component('opportunity-appeal-correction-assignment', {
                 : null;
         },
 
+        /**
+         * F6 (#49): catálogo de critérios selecionáveis da fase principal
+         * (injetado no init.php; presente só para technical/documentary).
+         */
+        criteriaCatalog() {
+            const catalogs = this.config.criteriaCatalogs || {};
+            return this.opportunityId != null
+                ? catalogs[this.opportunityId] ?? null
+                : null;
+        },
+
+        hasCriteriaSelector() {
+            const catalog = this.criteriaCatalog;
+            return !!catalog
+                && (catalog.total ?? 0) > 0
+                && this.allCriteriaIds().length > 0;
+        },
+
         markedSlots() {
             return this.slots.filter(slot => slot.checked);
         },
@@ -87,13 +105,23 @@ app.component('opportunity-appeal-correction-assignment', {
             return this.markedSlots.some(slot => !this.normalizeId(slot.correctorUserId));
         },
 
+        /**
+         * F6: seleção de escopo vazia (nenhum critério) invalida o salvar
+         * quando o seletor existe para o método da fase principal.
+         */
+        hasInvalidScopeSelection() {
+            return this.hasCriteriaSelector
+                && this.markedSlots.some(slot => this.scopeInvalidFrom(slot.scopeCriteria));
+        },
+
         canSave() {
             return this.endpointAvailable
                 && this.correctionEligible
                 && !this.loading
                 && !this.saving
                 && this.markedSlots.length > 0
-                && !this.hasInvalidSelection;
+                && !this.hasInvalidSelection
+                && !this.hasInvalidScopeSelection;
         },
 
         designatedCount() {
@@ -199,6 +227,9 @@ app.component('opportunity-appeal-correction-assignment', {
                 registration: evaluation.registration,
                 checked: false,
                 correctorUserId: null,
+                // F6: escopo inicia com TODOS os critérios (persiste null)
+                scopeCriteria: this.hasCriteriaSelector ? this.allCriteriaIds() : null,
+                scopeOpen: false,
             }));
 
             this.preSelectCorrectors();
@@ -218,7 +249,7 @@ app.component('opportunity-appeal-correction-assignment', {
 
             const api = new API('registrationappealreview');
             const reviews = await api.fetch('find', {
-                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp,correctorUser',
+                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp,correctorUser,releasedScope',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { raw: true, rawProcessor: data => data });
@@ -234,6 +265,7 @@ app.component('opportunity-appeal-correction-assignment', {
                 endsAt: review.endsAt,
                 sentTimestamp: review.sentTimestamp,
                 correctorUserId: this.normalizeId(review.correctorUser),
+                releasedScope: this.normalizeScope(review.releasedScope),
             }));
         },
 
@@ -366,6 +398,96 @@ app.component('opportunity-appeal-correction-assignment', {
                 : this.text('committee tag');
         },
 
+        // ============================================================ //
+        // F6 (#49): seletor de escopo de critérios (Variante 3)
+        // Semântica persistida: TODOS marcados → releasedScope null (sem
+        // restrição, compatível com getReleasedCriteriaIds); subconjunto →
+        // {criteria: [...]}; vazio → inválido (cliente bloqueia, backend 400).
+        // ============================================================ //
+
+        allCriteriaIds() {
+            const catalog = this.criteriaCatalog;
+            if (!catalog) {
+                return [];
+            }
+
+            const ids = [];
+            for (const section of catalog.sections || []) {
+                for (const item of section.items || []) {
+                    ids.push(item.id);
+                }
+            }
+
+            return ids;
+        },
+
+        scopePayloadFrom(selected) {
+            if (!this.hasCriteriaSelector) {
+                return null;
+            }
+
+            if (!selected || selected.length >= this.allCriteriaIds().length) {
+                return null;
+            }
+
+            return { criteria: [...selected] };
+        },
+
+        scopeInvalidFrom(selected) {
+            return this.hasCriteriaSelector && (!selected || selected.length === 0);
+        },
+
+        slotScopeCount(slot) {
+            if (!this.hasCriteriaSelector) {
+                return 0;
+            }
+
+            return slot?.scopeCriteria?.length ?? this.criteriaCatalog.total;
+        },
+
+        /**
+         * Escopo vigente da designação para o painel: "todos liberados"
+         * (null) ou "X de Y critérios".
+         */
+        reviewScopeLabel(review) {
+            const ids = this.scopeCriteriaIds(review);
+
+            if (ids == null) {
+                return this.text('all criteria released');
+            }
+
+            const total = this.criteriaCatalog?.total ?? ids.length;
+            return this.text('scope count')
+                .replace('%s', ids.length)
+                .replace('%s', total);
+        },
+
+        scopeCriteriaIds(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            if (!scope) {
+                return null;
+            }
+
+            const criteria = scope.criteria ?? scope.fields ?? null;
+            return criteria ? criteria.map(id => String(id)) : null;
+        },
+
+        normalizeScope(value) {
+            if (value == null) {
+                return null;
+            }
+
+            if (typeof value === 'string') {
+                try {
+                    value = JSON.parse(value);
+                } catch (error) {
+                    return null;
+                }
+            }
+
+            return value && typeof value === 'object' ? value : null;
+        },
+
         /**
          * Designação ATIVA (status 0/1/3) com API disponível pode ser
          * gerenciada da tela (substituir/cancelar). ENVIADO (2) não tem ações.
@@ -396,6 +518,10 @@ app.component('opportunity-appeal-correction-assignment', {
             slot.substitutionOpen = true;
             // Default: o corretor atual (PATCH só é enviado se mudar).
             slot.substituteUserId = review.correctorUserId ?? this.slotUserId(slot);
+            // F6: checklist pré-preenchida com o escopo vigente (todos quando
+            // null); trocar para "todos marcados" volta a liberar integral.
+            slot.substituteScopeCriteria = this.scopeCriteriaIds(review) ?? (this.hasCriteriaSelector ? this.allCriteriaIds() : null);
+            slot.substituteScopeOpen = this.hasCriteriaSelector;
         },
 
         cancelSubstitution(slot) {
@@ -404,7 +530,8 @@ app.component('opportunity-appeal-correction-assignment', {
 
         canConfirmSubstitution(slot) {
             return !slot.substituting
-                && this.normalizeId(slot.substituteUserId) != null;
+                && this.normalizeId(slot.substituteUserId) != null
+                && !this.scopeInvalidFrom(slot.substituteScopeCriteria);
         },
 
         /**
@@ -428,6 +555,7 @@ app.component('opportunity-appeal-correction-assignment', {
             try {
                 const response = await api.PATCH(url, {
                     correctorUser: this.normalizeId(slot.substituteUserId),
+                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria),
                 });
 
                 if (!response.ok) {
@@ -625,6 +753,8 @@ app.component('opportunity-appeal-correction-assignment', {
                 correctorUser: this.normalizeId(slot.correctorUserId),
                 status: this.config.statusDesignated ?? 0,
                 correctionType: this.config.correctionTypeDefault || 'official',
+                // F6: null = correção integral (todos ou método sem critérios)
+                releasedScope: this.scopePayloadFrom(slot.scopeCriteria),
             };
         },
 

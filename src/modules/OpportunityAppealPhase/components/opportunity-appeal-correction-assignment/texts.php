@@ -44,6 +44,12 @@ $texts = [
     'replace error' => i::__('Não foi possível substituir o corretor.'),
     'designation canceled' => i::__('Designação cancelada com sucesso.'),
     'cancel designation error' => i::__('Não foi possível cancelar a designação.'),
+
+    // F6 (#49): seletor de escopo de critérios
+    'criteria scope' => i::__('Escopo de critérios'),
+    'all criteria released' => i::__('todos liberados'),
+    'scope count' => i::__('%s de %s critérios'),
+    'select at least one criterion' => i::__('Selecione ao menos um critério'),
     'endpoint unavailable' => i::__('A criação e o acompanhamento de designações estão temporariamente indisponíveis: a API da entidade de designação (RegistrationAppealReview) ainda não está registrada no backend.'),
 ];
 

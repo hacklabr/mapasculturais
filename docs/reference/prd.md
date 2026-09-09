@@ -151,6 +151,8 @@ Extensão da fase de recurso (RF-A15) para permitir que gestores designem corret
 - o avaliador original daquele slot; ou
 - membro da Comissão de Recursos da fase de recurso.
 
+**Matriz de métodos (F6 / #49, Variante 3 — override registrado na #7 em 2026-09-09):** a designação é elegível para **todos** os métodos de avaliação. O seletor de escopo de critérios (`releasedScope`) existe somente para **avaliação técnica** (seções/critérios do EMC) e **qualificação documental** (campos e documentos exigidos); nos **demais métodos** (simples etc.) a correção é liberada integral (`releasedScope` nulo). Semântica: todos os critérios marcados → `null` (= sem restrição, compatível com `getReleasedCriteriaIds()`); subconjunto → `{criteria: [...]}`; lista vazia é rejeitada (400).
+
 A correção persiste in-place na `RegistrationEvaluation` original, mantendo seu dono (`user`) inalterado. A consolidação da inscrição recalcula automaticamente a partir das N avaliações (incluindo as corrigidas). O histórico fica em `EntityRevision` (mensagem customizada identificando corretor e slot) e na tabela `registration_appeal_review` (fonte primária para telas e exportações).
 
 **CA verificáveis:**
@@ -172,7 +174,7 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 | CA-13 | Gestor acompanha status individual de cada designação (designado / rascunho / enviado / reaberto), prazo e data de envio, podendo substituir corretor ou reabrir com novo prazo. |
 
 **Fora de escopo do MVP (fase 2):**
-- Métodos de avaliação além de `EvaluationMethodTechnical`.
+- ~~Métodos de avaliação além de `EvaluationMethodTechnical`~~ *(superado pelo F6/#49 — elegibilidade aberta a todos os métodos; seletor de critérios em técnica/documental, demais liberados integral — ver "Matriz de métodos" acima e em `Entities/RegistrationAppealReview.php::eligibleCorrectors`)*.
 - Criação de novas oportunidades/fases.
 - Reabertura da fase principal ou de seus prazos.
 - Mais de um recurso por inscrição.
