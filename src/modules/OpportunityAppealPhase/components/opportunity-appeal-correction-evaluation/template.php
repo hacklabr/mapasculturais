@@ -67,7 +67,8 @@ $this->import('
             </div>
         </section>
 
-        <section class="grid-12 section">
+        <!-- F7 (#51): formulário conforme o método do slot -->
+        <section v-if="isTechnical" class="grid-12 section">
             <h3 class="col-12"><?= i::__('Critérios liberados para correção') ?></h3>
             <div class="section__content col-12">
                 <div class="card">
@@ -91,6 +92,81 @@ $this->import('
                     <div class="opportunity-appeal-correction-evaluation__results">
                         <h4><?= i::__('Pontuação total') ?>: <strong>{{ totalScore }}</strong></h4>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <section v-else-if="isDocumentary" class="grid-12 section">
+            <h3 class="col-12"><?= i::__('Campos liberados para correção') ?></h3>
+            <div class="section__content col-12">
+                <div class="card">
+                    <div class="opportunity-appeal-correction-evaluation__criterion" v-for="field in fieldsList" :key="field.id">
+                        <label><strong>{{ field.title }}</strong></label>
+                        <div class="grid-12">
+                            <div class="col-6">
+                                <label><?= i::__('Avaliação original') ?></label>
+                                <p class="semibold">{{ originalFieldEvaluation(field) }}</p>
+                            </div>
+                            <div class="col-6">
+                                <label :for="'corrected-field-' + field.id"><?= i::__('Avaliação corrigida') ?></label>
+                                <div class="opportunity-appeal-correction-evaluation__field-options">
+                                    <label class="opportunity-appeal-correction-evaluation__field-option">
+                                        <input type="radio" value="" v-model="formData.data[field.id].evaluation" :disabled="isLocked" :name="'corrected-field-' + field.id">
+                                        <?= i::__('Não avaliada') ?>
+                                    </label>
+                                    <label class="opportunity-appeal-correction-evaluation__field-option">
+                                        <input type="radio" value="valid" v-model="formData.data[field.id].evaluation" :disabled="isLocked" :name="'corrected-field-' + field.id">
+                                        <?= i::__('Válida') ?>
+                                    </label>
+                                    <label class="opportunity-appeal-correction-evaluation__field-option">
+                                        <input type="radio" value="invalid" v-model="formData.data[field.id].evaluation" :disabled="isLocked" :name="'corrected-field-' + field.id">
+                                        <?= i::__('Inválida') ?>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <label :for="'corrected-field-obs-' + field.id"><?= i::__('Observações do campo') ?></label>
+                        <textarea
+                            :id="'corrected-field-obs-' + field.id"
+                            :name="'corrected-field-obs-' + field.id"
+                            :disabled="isLocked"
+                            v-model="formData.data[field.id].obs"></textarea>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section v-else-if="isSimple" class="grid-12 section">
+            <h3 class="col-12"><?= i::__('Correção do resultado') ?></h3>
+            <div class="section__content col-12">
+                <div class="card">
+                    <div class="grid-12">
+                        <div class="col-6">
+                            <label><?= i::__('Status original') ?></label>
+                            <p class="semibold">{{ originalStatus() }}</p>
+                        </div>
+                        <div class="col-6">
+                            <label for="corrected-global-status"><?= i::__('Status corrigido') ?></label>
+                            <select
+                                id="corrected-global-status"
+                                name="corrected-global-status"
+                                v-model="formData.data.status"
+                                :disabled="isLocked">
+
+                                <option value="" disabled><?= i::__('Selecione o status') ?></option>
+                                <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label for="corrected-global-obs"><?= i::__('Observações') ?></label>
+                            <textarea
+                                id="corrected-global-obs"
+                                name="corrected-global-obs"
+                                :disabled="isLocked"
+                                v-model="formData.data.obs"></textarea>
+                        </div>
+                    </div>
+                    <mc-alert type="helper"><?= i::__('Método de avaliação sem critérios: a correção libera o resultado integral da avaliação.') ?></mc-alert>
                 </div>
             </div>
         </section>
