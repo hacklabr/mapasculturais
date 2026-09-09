@@ -1,11 +1,16 @@
 /**
- * opportunity-appeal-correction-assignment (F2 / issue #18)
+ * opportunity-appeal-correction-assignment (F2 #18 + F5 #45)
  *
  * Modal de designação de corretores por slot: lista as avaliações da fase
  * principal da inscrição (uma por avaliador), permite marcar quais notas serão
  * corrigidas e designar 1 corretor por slot marcado (dono do slot ou membro
  * da Comissão de Recursos — mesma regra de
  * RegistrationAppealReview::eligibleCorrectors()).
+ *
+ * F5: no painel de acompanhamento, designação ATIVA (status 0/1/3) ganha
+ * "Substituir corretor" (PATCH single com {correctorUser}, CA-3 revalidado
+ * server-side pelo PR6) e "Cancelar designação" (DELETE single — slot volta
+ * a ser designável). Status ENVIADO (2) não tem ações.
  *
  * Abertura: ver docblock do init.php deste componente (evento global
  * 'opportunity-appeal-correction-assignment:open' com {opportunity, registration}).
@@ -15,6 +20,8 @@
  * - /registrationappealreview (API canônica da entidade) → criação e
  *   acompanhamento; habilitada somente quando 'endpointAvailable' (controller
  *   da entidade registrado no backend).
+ * - PATCH/DELETE /registrationappealreview/single/{id} → substituição e
+ *   cancelamento de designação (PR6 / issue #40).
  */
 
 app.component('opportunity-appeal-correction-assignment', {
@@ -211,13 +218,14 @@ app.component('opportunity-appeal-correction-assignment', {
 
             const api = new API('registrationappealreview');
             const reviews = await api.fetch('find', {
-                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp',
+                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp,correctorUser',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { raw: true, rawProcessor: data => data });
 
             // normalizeId aceita escalar OU objeto — o join com os slots
-            // compara ids normalizados nos dois lados.
+            // compara ids normalizados nos dois lados. correctorUser (escalar)
+            // alimenta o painel e o default da substituição (F5).
             this.reviews = (reviews || []).map(review => ({
                 id: this.normalizeId(review.id),
                 originalEvaluationId: this.normalizeId(review.originalEvaluation),
@@ -225,6 +233,7 @@ app.component('opportunity-appeal-correction-assignment', {
                 correctionType: review.correctionType,
                 endsAt: review.endsAt,
                 sentTimestamp: review.sentTimestamp,
+                correctorUserId: this.normalizeId(review.correctorUser),
             }));
         },
 
@@ -331,6 +340,143 @@ app.component('opportunity-appeal-correction-assignment', {
 
         reviewSentAt(review) {
             return this.formatDate(review?.sentTimestamp);
+        },
+
+        // ============================================================ //
+        // F5 (#45): substituição e cancelamento de designação (CA-13)
+        // ============================================================ //
+
+        /**
+         * Linha "trancada" (visual de inércia, cinza): somente designação
+         * ENVIADA — realmente sem ações. Designação ATIVA não usa esse estado:
+         * tem ações de gestão e deve parecer viva.
+         */
+        isSlotLocked(slot) {
+            const review = this.reviewForSlot(slot);
+            return !!review && !this.canManageReview(review);
+        },
+
+        /**
+         * Papel do corretor designado para exibição estática na coluna
+         * "Corretor designado": dono do slot ou Comissão de Recursos.
+         */
+        correctorRoleLabel(slot, review) {
+            return this.normalizeId(review?.correctorUserId) === this.slotUserId(slot)
+                ? this.text('slot owner tag')
+                : this.text('committee tag');
+        },
+
+        /**
+         * Designação ATIVA (status 0/1/3) com API disponível pode ser
+         * gerenciada da tela (substituir/cancelar). ENVIADO (2) não tem ações.
+         */
+        canManageReview(review) {
+            if (!this.endpointAvailable || !review) {
+                return false;
+            }
+
+            const active_statuses = this.config.activeStatuses || [0, 1, 3];
+            return active_statuses.includes(this.statusNumber(review));
+        },
+
+        /**
+         * Nome do corretor atual da designação (mesma resolução de nomes do
+         * painel: evaluators → Comissão de Recursos → null).
+         */
+        reviewCorrectorName(review) {
+            return this.evaluatorName(review?.correctorUserId);
+        },
+
+        startSubstitution(slot) {
+            const review = this.activeReviewForSlot(slot);
+            if (!review || !this.canManageReview(review)) {
+                return;
+            }
+
+            slot.substitutionOpen = true;
+            // Default: o corretor atual (PATCH só é enviado se mudar).
+            slot.substituteUserId = review.correctorUserId ?? this.slotUserId(slot);
+        },
+
+        cancelSubstitution(slot) {
+            slot.substitutionOpen = false;
+        },
+
+        canConfirmSubstitution(slot) {
+            return !slot.substituting
+                && this.normalizeId(slot.substituteUserId) != null;
+        },
+
+        /**
+         * Substitui o corretor da designação ativa do slot:
+         * PATCH /registrationappealreview/single/{id} com {correctorUser}.
+         * O backend revalida CA-3 (corretor inelegível → 400 com mensagem).
+         * Sucesso → mensagem + fetchReviews() reflete o novo corretor sem reload.
+         */
+        async confirmSubstitution(slot) {
+            const review = this.activeReviewForSlot(slot);
+            if (!review || !this.canConfirmSubstitution(slot)) {
+                return;
+            }
+
+            const messages = useMessages();
+            slot.substituting = true;
+
+            const api = new API('registrationappealreview');
+            const url = Utils.createUrl('registrationappealreview', 'single', { id: review.id });
+
+            try {
+                const response = await api.PATCH(url, {
+                    correctorUser: this.normalizeId(slot.substituteUserId),
+                });
+
+                if (!response.ok) {
+                    throw await response.json().catch(() => ({}));
+                }
+
+                messages.success(this.text('corrector replaced'));
+                slot.substitutionOpen = false;
+                await this.fetchReviews();
+            } catch (error) {
+                console.error('opportunity-appeal-correction-assignment:confirmSubstitution', error);
+                messages.error(this.backendErrorMessage(error) || this.text('replace error'));
+            } finally {
+                slot.substituting = false;
+            }
+        },
+
+        /**
+         * Cancela (DELETE /registrationappealreview/single/{id}) a designação
+         * do slot: volta ao estado designável — checkbox destravado pelo
+         * recomputo de slotSelectable() após o fetchReviews().
+         */
+        async cancelAssignment(slot) {
+            const review = this.activeReviewForSlot(slot) || this.reviewForSlot(slot);
+            if (!review || !this.endpointAvailable) {
+                return;
+            }
+
+            const messages = useMessages();
+            slot.canceling = true;
+
+            const api = new API('registrationappealreview');
+            const url = Utils.createUrl('registrationappealreview', 'single', { id: review.id });
+
+            try {
+                const response = await api.DELETE(url);
+
+                if (!response.ok) {
+                    throw await response.json().catch(() => ({}));
+                }
+
+                messages.success(this.text('designation canceled'));
+                await this.fetchReviews();
+            } catch (error) {
+                console.error('opportunity-appeal-correction-assignment:cancelAssignment', error);
+                messages.error(this.backendErrorMessage(error) || this.text('cancel designation error'));
+            } finally {
+                slot.canceling = false;
+            }
         },
 
         formatDate(value) {

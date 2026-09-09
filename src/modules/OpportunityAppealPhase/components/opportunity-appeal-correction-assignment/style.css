@@ -73,6 +73,44 @@
     gap: .25rem;
 }
 
+/* F5: slot designado — dono como leitura estática viva (não controle desabilitado).
+   Sem checkbox na linha, os recuos pensados para o layout com checkbox zeram. */
+.opportunity-appeal-correction-assignment__slot-owner {
+    align-items: center;
+    display: flex;
+    gap: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__slot-owner .iconify {
+    font-size: .75rem;
+    min-width: .75rem;
+}
+
+.opportunity-appeal-correction-assignment__slot--assigned .opportunity-appeal-correction-assignment__slot-result,
+.opportunity-appeal-correction-assignment__slot--assigned .opportunity-appeal-correction-assignment__tag {
+    margin-left: 0;
+}
+
+/* F5: corretor designado como leitura estática com tag de papel */
+.opportunity-appeal-correction-assignment__assigned {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
+.opportunity-appeal-correction-assignment__assigned .iconify {
+    font-size: 1rem;
+    min-width: 1rem;
+}
+
+.opportunity-appeal-correction-assignment__tag--role {
+    background-color: #fff;
+    border: 1px solid var(--mc-primary-500);
+    color: var(--mc-primary-500);
+    margin: 0;
+}
+
 .opportunity-appeal-correction-assignment__slot-check input {
     margin-right: .25rem;
 }
@@ -144,6 +182,36 @@
 .opportunity-appeal-correction-assignment__status-detail--empty {
     font-size: .75rem;
     opacity: .5;
+}
+
+/* F5 (#45): ações de gestão (substituir/cancelar) e substituição inline */
+.opportunity-appeal-correction-assignment__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    margin-top: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__actions .button {
+    padding-block: .25rem;
+}
+
+.opportunity-appeal-correction-assignment__substitution {
+    background-color: #fff;
+    border: 1px dashed var(--mc-gray-300);
+    border-radius: var(--mc-border-radius-xs);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: .5rem;
+    padding: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__substitution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
 }
 
 /* Mesmo breakpoint do mc-modal/.grid-12 (800px): linhas empilham. */

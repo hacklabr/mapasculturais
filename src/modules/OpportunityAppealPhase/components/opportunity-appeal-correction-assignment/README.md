@@ -89,6 +89,24 @@ utilitárias do tema (`.semibold`, `.{primary|success|warning|danger}__color`,
 `.warning__background`) e o `style.css` local do componente (auto-enfileirado,
 sem passo de build — mesmo padrão do `mc-modal`), com tokens `--mc-*`.
 
+## Gestão de designação ativa (F5 / #45, CA-13)
+
+No painel de acompanhamento, slot com designação **ativa** (status
+designado/rascunho/reaberto — `activeStatuses` do config) exibe o corretor
+atual e duas ações:
+
+- **Substituir corretor** — select inline com os elegíveis daquele slot
+  (mesma fonte do fluxo de designação) → `PATCH
+  /registrationappealreview/single/{id}` com `{correctorUser}`; o backend
+  revalida CA-3 (inelegível → 400 com mensagem exibida via
+  `backendErrorMessage`). Sucesso → toast + `fetchReviews()` reflete o novo
+  corretor sem reload.
+- **Cancelar designação** — confirmação com `mc-confirm-button` → `DELETE
+  /registrationappealreview/single/{id}`; o slot volta ao estado designável
+  (checkbox destravado, "sem designação").
+
+Slot com status **enviado** (2) não exibe ações.
+
 ## Defaults de criação
 
 Por linha marcada cria-se: `status=DESIGNATED`, `correctionType=official`

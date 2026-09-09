@@ -35,6 +35,15 @@ $texts = [
     'saved' => i::__('Designações criadas com sucesso.'),
     'save error' => i::__('Não foi possível criar as designações.'),
     'loading' => i::__('Carregando avaliações...'),
+
+    // F5 (#45): substituição e cancelamento de designação
+    'select substitute' => i::__('Selecione o novo corretor'),
+    'confirm substitution' => i::__('Confirmar'),
+    'substituting' => i::__('Substituindo...'),
+    'corrector replaced' => i::__('Corretor substituído com sucesso.'),
+    'replace error' => i::__('Não foi possível substituir o corretor.'),
+    'designation canceled' => i::__('Designação cancelada com sucesso.'),
+    'cancel designation error' => i::__('Não foi possível cancelar a designação.'),
     'endpoint unavailable' => i::__('A criação e o acompanhamento de designações estão temporariamente indisponíveis: a API da entidade de designação (RegistrationAppealReview) ainda não está registrada no backend.'),
 ];
 
