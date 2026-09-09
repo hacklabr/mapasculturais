@@ -43,10 +43,20 @@ $this->import('
                 v-for="slot in slots"
                 :key="slot.id"
                 class="opportunity-appeal-correction-assignment__slot"
-                :class="{ 'opportunity-appeal-correction-assignment__slot--disabled': !slotSelectable(slot) }">
+                :class="{
+                    'opportunity-appeal-correction-assignment__slot--disabled': isSlotLocked(slot),
+                    'opportunity-appeal-correction-assignment__slot--assigned': !!reviewForSlot(slot),
+                }">
 
                 <div class="opportunity-appeal-correction-assignment__slot-score">
+                    <!-- Slot designado: leitura estática do dono (sem controle desabilitado) -->
+                    <div v-if="reviewForSlot(slot)" class="opportunity-appeal-correction-assignment__slot-owner semibold">
+                        <mc-icon name="circle" :class="statusClass(reviewForSlot(slot))"></mc-icon>
+                        <span>{{ slotAgentName(slot) }}</span>
+                    </div>
+
                     <label
+                        v-else
                         class="opportunity-appeal-correction-assignment__slot-check"
                         :class="{ 'semibold': slot.checked }"
                         :for="'correct-slot-' + slot.id">
@@ -78,28 +88,39 @@ $this->import('
                 </div>
 
                 <div class="opportunity-appeal-correction-assignment__slot-corrector">
-                    <select
-                        class="opportunity-appeal-correction-assignment__select"
-                        :id="'corrector-select-' + slot.id"
-                        :name="'corrector-select-' + slot.id"
-                        :aria-label="text('select corrector') + ' — ' + slotAgentName(slot)"
-                        v-model="slot.correctorUserId"
-                        :disabled="!slot.checked || !slotSelectable(slot)">
-
-                        <option :value="null" disabled>{{ text('select corrector') }}</option>
-                        <option
-                            v-for="option in correctorOptions(slot)"
-                            :key="option.value"
-                            :value="option.value">
-                            {{ option.label }}
-                        </option>
-                    </select>
-
-                    <div
-                        v-if="slot.checked && !slot.correctorUserId"
-                        class="opportunity-appeal-correction-assignment__slot-hint danger__color">
-                        <?= i::__('Selecione o corretor para salvar esta designação') ?>
+                    <!-- Slot designado: corretor como leitura estática com papel -->
+                    <div v-if="reviewForSlot(slot)" class="opportunity-appeal-correction-assignment__assigned">
+                        <mc-icon name="agent" class="primary__color"></mc-icon>
+                        <span class="semibold">{{ reviewCorrectorName(reviewForSlot(slot)) || '—' }}</span>
+                        <span class="opportunity-appeal-correction-assignment__tag opportunity-appeal-correction-assignment__tag--role">
+                            {{ correctorRoleLabel(slot, reviewForSlot(slot)) }}
+                        </span>
                     </div>
+
+                    <template v-else>
+                        <select
+                            class="opportunity-appeal-correction-assignment__select"
+                            :id="'corrector-select-' + slot.id"
+                            :name="'corrector-select-' + slot.id"
+                            :aria-label="text('select corrector') + ' — ' + slotAgentName(slot)"
+                            v-model="slot.correctorUserId"
+                            :disabled="!slot.checked || !slotSelectable(slot)">
+
+                            <option :value="null" disabled>{{ text('select corrector') }}</option>
+                            <option
+                                v-for="option in correctorOptions(slot)"
+                                :key="option.value"
+                                :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+
+                        <div
+                            v-if="slot.checked && !slot.correctorUserId"
+                            class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                            <?= i::__('Selecione o corretor para salvar esta designação') ?>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="opportunity-appeal-correction-assignment__slot-status">
@@ -127,10 +148,10 @@ $this->import('
                             <span><?= i::__('Enviada em') ?>: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
                         </div>
 
-                        <!-- F5 (#45): gestão de designação ativa (substituir/cancelar) -->
+                        <!-- F5 (#45): gestão de designação ativa (substituir/cancelar) — únicos controles ativos da linha -->
                         <div v-if="canManageReview(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__actions">
                             <button
-                                class="button button--sm button--text"
+                                class="button button--sm button--text primary__color"
                                 :class="{ 'disabled': slot.substituting || slot.canceling }"
                                 :disabled="slot.substituting || slot.canceling"
                                 @click="startSubstitution(slot)">
@@ -141,7 +162,7 @@ $this->import('
                             <mc-confirm-button :loading="slot.canceling || false" @confirm="cancelAssignment(slot)">
                                 <template #button="modal">
                                     <button
-                                        class="button button--sm button--text danger__color"
+                                        class="button button--sm button--text-danger"
                                         :class="{ 'disabled': slot.substituting || slot.canceling }"
                                         :disabled="slot.substituting || slot.canceling"
                                         @click="modal.open()">

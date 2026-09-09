@@ -347,6 +347,26 @@ app.component('opportunity-appeal-correction-assignment', {
         // ============================================================ //
 
         /**
+         * Linha "trancada" (visual de inércia, cinza): somente designação
+         * ENVIADA — realmente sem ações. Designação ATIVA não usa esse estado:
+         * tem ações de gestão e deve parecer viva.
+         */
+        isSlotLocked(slot) {
+            const review = this.reviewForSlot(slot);
+            return !!review && !this.canManageReview(review);
+        },
+
+        /**
+         * Papel do corretor designado para exibição estática na coluna
+         * "Corretor designado": dono do slot ou Comissão de Recursos.
+         */
+        correctorRoleLabel(slot, review) {
+            return this.normalizeId(review?.correctorUserId) === this.slotUserId(slot)
+                ? this.text('slot owner tag')
+                : this.text('committee tag');
+        },
+
+        /**
          * Designação ATIVA (status 0/1/3) com API disponível pode ser
          * gerenciada da tela (substituir/cancelar). ENVIADO (2) não tem ações.
          */
