@@ -60,6 +60,31 @@ app.component('opportunity-appeal-correction-evaluation', {
             return this.environment?.criteria || [];
         },
 
+        // F7 (#51): método da fase principal define o formulário renderizado
+        method() {
+            return this.environment?.method || 'technical';
+        },
+
+        isTechnical() {
+            return this.method === 'technical';
+        },
+
+        isDocumentary() {
+            return this.method === 'documentary';
+        },
+
+        isSimple() {
+            return this.method === 'simple';
+        },
+
+        fieldsList() {
+            return this.environment?.fields || [];
+        },
+
+        statusOptions() {
+            return this.environment?.statusOptions || [];
+        },
+
         totalScore() {
             let result = 0;
 
@@ -108,10 +133,56 @@ app.component('opportunity-appeal-correction-evaluation', {
             return Number.isFinite(number) ? number : 0;
         },
 
+        /**
+         * F7: garante a forma do formData por método — documental precisa de
+         * {evaluation, obs} por campo liberado; simples precisa de status/obs.
+         */
+        initFormDataByMethod() {
+            if (this.isDocumentary) {
+                for (const field of this.fieldsList) {
+                    const current = this.formData.data[field.id];
+
+                    this.formData.data[field.id] = {
+                        evaluation: '',
+                        obs: '',
+                        ...(current && typeof current === 'object' ? current : {}),
+                    };
+                }
+            } else if (this.isSimple) {
+                this.formData.data.status = this.formData.data.status ?? '';
+                this.formData.data.obs = this.formData.data.obs ?? '';
+            }
+        },
+
         originalNote(criterion) {
             const value = this.environment?.originalEvaluation?.[criterion.id];
 
             return (value === null || value === undefined || value === '') ? '-' : value;
+        },
+
+        originalFieldEvaluation(field) {
+            const value = this.environment?.originalEvaluation?.[field.id]?.evaluation;
+
+            return this.fieldEvaluationLabel(value);
+        },
+
+        fieldEvaluationLabel(value) {
+            if (value === 'valid') {
+                return this.text('field-valid');
+            }
+
+            if (value === 'invalid') {
+                return this.text('field-invalid');
+            }
+
+            return this.text('field-not-evaluated');
+        },
+
+        originalStatus() {
+            const value = this.environment?.originalEvaluation?.status;
+            const option = this.statusOptions.find(option => option.value === String(value ?? ''));
+
+            return option ? option.label : (value ?? '—');
         },
 
         async fetchEnvironment() {
@@ -129,6 +200,7 @@ app.component('opportunity-appeal-correction-evaluation', {
                         ...this.environment.originalEvaluation,
                         ...(this.environment.draft || {}),
                     };
+                    this.initFormDataByMethod();
                 } else {
                     this.error = {
                         status: res.status,

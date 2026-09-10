@@ -14,4 +14,9 @@ return [
     'note-higher-configured' => i::__('Nota maior que a configurada para avaliação'),
     'draft-saved' => i::__('Rascunho salvo com sucesso'),
     'correction-sent' => i::__('Correção enviada com sucesso'),
+
+    // F7 (#51): qualificação documental
+    'field-valid' => i::__('Válida'),
+    'field-invalid' => i::__('Inválida'),
+    'field-not-evaluated' => i::__('Não avaliada'),
 ];

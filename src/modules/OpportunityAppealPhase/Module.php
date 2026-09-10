@@ -413,9 +413,16 @@ class Module extends \MapasCulturais\Module {
         return (bool) env('APPEAL_TWO_STAGE_PUBLISH', $this->config['featureFlag.appealTwoStagePublish']);
     }
 
+    /**
+     * F7 (#51): o acesso do corretor designado ao slot vale para TODOS os
+     * métodos de avaliação (antes restrito ao técnico). Guardas mantidos:
+     * feature flag, designação ativa do corretor para o slot (com inscrição,
+     * fase de recurso e dono conferidos por findActiveForEvaluationAndUser),
+     * janela de prazo e elegibilidade (eligibleCorrectors).
+     */
     public function canDesignatedCorrectorAccessSlot(RegistrationEvaluation $slot, $user): bool
     {
-        if (!$this->isAppealScoreCorrectionEnabled() || !$this->isTechnicalEvaluationSlot($slot)) {
+        if (!$this->isAppealScoreCorrectionEnabled()) {
             return false;
         }
 
@@ -432,14 +439,6 @@ class Module extends \MapasCulturais\Module {
         }
 
         return false;
-    }
-
-    private function isTechnicalEvaluationSlot(RegistrationEvaluation $slot): bool
-    {
-        $opportunity = $slot->registration->opportunity;
-        $emc = $opportunity->evaluationMethodConfiguration;
-
-        return (bool) $emc && $emc->type->id === 'technical';
     }
 
     private function isAppealScoreCorrectionEnabled(): bool
