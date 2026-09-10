@@ -221,6 +221,13 @@ app.component('opportunity-evaluations-table', {
             // Campos de isenção por selos (spec §4.3). Atribuídos explicitamente
             // para garantir disponibilidade independentemente de serem colunas
             // ou campos derivados no Registration.
+
+            // F4 (#20): `evaluation` é atribuído CRU (sem Entity.populate) —
+            // por isso as colunas computadas por slot (originalScore/
+            // correctedScore/scoreDifference, hook ApiQuery do módulo
+            // OpportunityAppealPhase) sobrevivem aqui sem cópia manual. Se
+            // este processor algum dia popular o evaluation via SDK, copiar
+            // as chaves como o rawProcessor da opportunity-registrations-table.
             reg.sealExemptionStatus = rawData.registration?.sealExemptionStatus ?? null;
             reg.sealExemptionTimestamp = rawData.registration?.sealExemptionTimestamp ?? null;
 
