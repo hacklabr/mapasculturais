@@ -6,8 +6,9 @@ app.component('opportunity-registrations-table', {
             required: true
         },
         visibleColumns: {
+            // F4 (#20): médias de nota visíveis por padrão (CA-11)
             type: Array,
-            default: ["agent", "status", "category", "consolidatedResult", "editable","updateTimestamp","sentTimestamp","createTimestamp"],
+            default: ["agent", "status", "category", "consolidatedResult", "averageOriginalScore", "averageCorrectedScore", "scoreDifference", "editable","updateTimestamp","sentTimestamp","createTimestamp"],
         },
         identifier: {
             type: String,
