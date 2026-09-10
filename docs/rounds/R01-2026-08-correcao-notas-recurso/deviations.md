@@ -13,3 +13,10 @@
 - **Razão:** "A coluna deve estar na lista de inscrição da fase de recurso" — decisão do revisor; CA-1/issue #17 eram ambíguos sobre qual lista.
 - **Decisão registrada em:** override na épica #7 (2026-09-08, por @israelmelo).
 - **Documento de referência atualizado:** docs/reference/prd.md (CA-1 esclarecido).
+
+### 2026-09-10 — F4 (#20): filtragem pelas colunas de nota
+- **Planejado:** "Tornar filtrável nas tabelas" (item 4 do "o que fazer" da #20).
+- **Implementado:** colunas selecionáveis via `@select` (propriedades virtuais nos hooks `ApiQuery(…).findResult`), mas **filtro** lança `PropertyDoesNotExists` na ApiQuery e `@order` pelas virtuais é ignorado — filtragem não exposta na UI; limitação documentada nos commits.
+- **Razão:** a ApiQuery não suporta filtrar/ordenar por propriedades virtuais computadas em hook; suportar exigiria estender o core da ApiQuery — fora do escopo da tarefa.
+- **Decisão registrada em:** relato do especialista ao facilitador na execução do F4 (2026-09-10).
+- **Documento de referência atualizado:** n/a — comportamento novo, sem contradição com PRD (CA-11 exige exibição, não filtragem); follow-up possível registrado na conversa da rodada.
