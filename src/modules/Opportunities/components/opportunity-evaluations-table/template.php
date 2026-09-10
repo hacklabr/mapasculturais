@@ -139,6 +139,27 @@ $this->import('
                     {{getResultString(entity)}}
                 </template>
 
+                <!-- F4 (#20) — CA-11: nota original/corrigida/diferença por slot -->
+                <template #originalScore="{entity}">
+                    {{ formatScoreColumn(entity.evaluation?.originalScore) }}
+                </template>
+
+                <template #correctedScore="{entity}">
+                    {{ formatScoreColumn(entity.evaluation?.correctedScore) }}
+                </template>
+
+                <template #scoreDifference="{entity}">
+                    <span
+                        v-if="entity.evaluation?.scoreDifference !== null && entity.evaluation?.scoreDifference !== undefined"
+                        class="semibold"
+                        :class="entity.evaluation.scoreDifference > 0
+                            ? 'success__color'
+                            : (entity.evaluation.scoreDifference < 0 ? 'danger__color' : '')">
+                        {{ formatScoreColumn(entity.evaluation.scoreDifference) }}
+                    </span>
+                    <span v-else>-</span>
+                </template>
+
                 <template #coletivo="{entity}">
                     <span v-if="entity.agentsData?.coletivo?.name">{{entity.agentsData?.coletivo?.name}}</span>
                     <span v-if="!entity.agentsData?.coletivo?.name"><?= i::__("Não informado") ?></span>

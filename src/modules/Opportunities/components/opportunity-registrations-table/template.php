@@ -128,8 +128,29 @@ $entity = $this->controller->requestedEntity;
                     <span v-else>&nbsp;</span>
                 </template>
 
-                <template #consolidatedResult="{entity}"> 
+                <template #consolidatedResult="{entity}">
                     {{consolidatedResultToString(entity)}}
+                </template>
+
+                <!-- F4 (#20) — CA-11: médias por inscrição -->
+                <template #averageOriginalScore="{entity}">
+                    {{ formatScoreColumn(entity.averageOriginalScore) }}
+                </template>
+
+                <template #averageCorrectedScore="{entity}">
+                    {{ formatScoreColumn(entity.averageCorrectedScore) }}
+                </template>
+
+                <template #scoreDifference="{entity}">
+                    <span
+                        v-if="entity.scoreDifference !== null && entity.scoreDifference !== undefined"
+                        class="semibold"
+                        :class="entity.scoreDifference > 0
+                            ? 'success__color'
+                            : (entity.scoreDifference < 0 ? 'danger__color' : '')">
+                        {{ formatScoreColumn(entity.scoreDifference) }}
+                    </span>
+                    <span v-else>-</span>
                 </template>
 
                 <template #agent="{entity}">

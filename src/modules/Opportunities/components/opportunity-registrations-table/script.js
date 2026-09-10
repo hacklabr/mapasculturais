@@ -435,6 +435,17 @@ app.component('opportunity-registrations-table', {
             return this.statusDict.find(status => status.value === actualStatus);
         },
 
+        // F4 (#20): colunas de média/nota — null vira "-", números sem zeros à direita.
+        formatScoreColumn(value) {
+            if (value === null || value === undefined) {
+                return '-';
+            }
+
+            const number = Number(value);
+
+            return Number.isFinite(number) ? String(parseFloat(number.toFixed(2))) : '-';
+        },
+
         setStatus(selected, entity) {
             const api = new API();
             const url = Utils.createUrl('registration', 'setStatusTo', {id: entity.id});

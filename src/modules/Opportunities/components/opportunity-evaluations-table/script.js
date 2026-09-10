@@ -325,6 +325,17 @@ app.component('opportunity-evaluations-table', {
             return mcdate.date('2-digit year');
         },
 
+        // F4 (#20): colunas de nota — null vira "-", números sem zeros à direita.
+        formatScoreColumn(value) {
+            if (value === null || value === undefined) {
+                return '-';
+            }
+
+            const number = Number(value);
+
+            return Number.isFinite(number) ? String(parseFloat(number.toFixed(2))) : '-';
+        },
+
         onChange(event, onInput, entities) {
             if(event instanceof InputEvent) {
                 setTimeout(() => onInput(event), 50);

@@ -92,6 +92,24 @@ $default_headers = [
         'text' => i::__('Divisão geográfica do responsável – País'),
         'value' => 'owner?.geoPais',
     ],
+    // F4 (#20) — CA-11: médias por inscrição (computadas pelo módulo
+    // OpportunityAppealPhase no findResult da ApiQuery; o slug entra no
+    // default_select pelo merge de headers abaixo).
+    [
+        'text' => i::__('Média original'),
+        'value' => 'averageOriginalScore',
+        'slug' => 'averageOriginalScore',
+    ],
+    [
+        'text' => i::__('Média corrigida'),
+        'value' => 'averageCorrectedScore',
+        'slug' => 'averageCorrectedScore',
+    ],
+    [
+        'text' => i::__('Diferença'),
+        'value' => 'scoreDifference',
+        'slug' => 'scoreDifference',
+    ],
 ];
 
 if($phase->isReportingPhase || $phase->isFinalReportingPhase) {
