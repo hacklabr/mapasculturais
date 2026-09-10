@@ -1092,7 +1092,10 @@ class Opportunity extends EntityController {
         sort($evaluation_ids);
 
         $edata = [
-            '@select' => 'id,result,evaluationData,registration,user,status,createTimestamp,updateTimestamp',
+            // F4 (#20): colunas computadas de nota por slot (CA-11), preenchidas
+            // pelo hook ApiQuery(registrationevaluation).findResult do módulo
+            // OpportunityAppealPhase quando há @select com essas chaves.
+            '@select' => 'id,result,evaluationData,registration,user,status,createTimestamp,updateTimestamp,originalScore,correctedScore,scoreDifference',
             'id' => API::IN($evaluation_ids),
             "status" => API::GTE(0),
             '@permissions' => 'view'
