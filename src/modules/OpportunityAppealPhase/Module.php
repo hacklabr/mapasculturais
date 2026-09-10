@@ -48,6 +48,23 @@ class Module extends \MapasCulturais\Module {
             $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
         });
 
+        /*
+         * F4 (#20) — CA-11: colunas de nota original/corrigida/diferença.
+         *
+         * Propriedades computadas, expostas ao @select da ApiQuery (o parse
+         * aceita chaves virtuais: processEntities as preenche com null e o
+         * hook abaixo computa os valores). Sem persistência e sem schema.
+         * A ordenação por essas colunas é ignorada pela ApiQuery (sem erro);
+         * filtragem por elas não é suportada (PropertyDoesNotExists).
+         */
+        $app->hook('ApiQuery(registrationevaluation).findResult', function (&$result) use ($self) {
+            $self->enrichEvaluationScoreColumns($result);
+        });
+
+        $app->hook('ApiQuery(registration).findResult', function (&$result) use ($self) {
+            $self->enrichRegistrationScoreColumns($result);
+        });
+
         /* Endpoint de criação de fase de recurso na oportunidade */
         $app->hook('POST(opportunity.createAppealPhase)', function() use ($app) {
             /** @var Controllers\Opportunity $this  */
@@ -439,6 +456,240 @@ class Module extends \MapasCulturais\Module {
         }
 
         return false;
+    }
+
+    // ============================================================ //
+    // F4 (#20) — CA-11: propriedades computadas de nota
+    // ============================================================ //
+
+    /**
+     * Colunas por slot (avaliação), computadas no findResult da ApiQuery:
+     *
+     * - originalScore: nota do slot ANTES da primeira correção aplicada
+     *   (registration_appeal_review com status SENT, menor id); sem correção,
+     *   é a própria nota vigente (snapshot originalScore da designação);
+     * - correctedScore: nota vigente (result pós-correção in-place);
+     * - scoreDifference: correctedScore − originalScore.
+     *
+     * Formato por método, derivado do `result` como as listas já exibem:
+     * técnico = pontuação ponderada; documental = 1/−1 (válida/inválida);
+     * simples = código do status. Resultados não numéricos → null.
+     *
+     * Só computa quando as chaves foram pedidas no @select (a chave existe,
+     * null, nas linhas); queries que não pedem não pagam o custo.
+     *
+     * @param array<int, array<string, mixed>> $result
+     */
+    public function enrichEvaluationScoreColumns(array &$result): void
+    {
+        if (!$result) {
+            return;
+        }
+
+        $wants_original = array_key_exists('originalScore', $result[0]);
+        $wants_corrected = array_key_exists('correctedScore', $result[0]);
+        $wants_difference = array_key_exists('scoreDifference', $result[0]);
+
+        if (!$wants_original && !$wants_corrected && !$wants_difference) {
+            return;
+        }
+
+        $evaluation_ids = [];
+        foreach ($result as $row) {
+            if (!empty($row['id'])) {
+                $evaluation_ids[] = (int) $row['id'];
+            }
+        }
+
+        $snapshot = $this->fetchCurrentAndOriginalScores($evaluation_ids);
+
+        foreach ($result as &$row) {
+            $id = (int) ($row['id'] ?? 0);
+            $current = $snapshot[$id]['current'] ?? null;
+            $original = $snapshot[$id]['original'] ?? null;
+
+            // Sem correção aplicada: original é a nota vigente.
+            $original = $original ?? $current;
+
+            if ($wants_original) {
+                $row['originalScore'] = $original;
+            }
+            if ($wants_corrected) {
+                $row['correctedScore'] = $current;
+            }
+            if ($wants_difference) {
+                $row['scoreDifference'] = ($original !== null && $current !== null)
+                    ? $current - $original
+                    : null;
+            }
+        }
+    }
+
+    /**
+     * Colunas por inscrição (lista de inscritos), computadas no findResult:
+     *
+     * - averageCorrectedScore: média das notas vigentes dos slots ENVIADOS
+     *   (mesma base do getSentEvaluations — consolidação vigente);
+     * - averageOriginalScore: média recomputada trocando, em cada slot
+     *   corrigido, a nota vigente pela originalScore da designação aplicada;
+     * - scoreDifference: média corrigida − média original (sem nenhuma
+     *   correção: médias iguais, diferença 0; sem notas numéricas: null).
+     *
+     * @param array<int, array<string, mixed>> $result
+     */
+    public function enrichRegistrationScoreColumns(array &$result): void
+    {
+        if (!$result) {
+            return;
+        }
+
+        $wants_original = array_key_exists('averageOriginalScore', $result[0]);
+        $wants_corrected = array_key_exists('averageCorrectedScore', $result[0]);
+        $wants_difference = array_key_exists('scoreDifference', $result[0]);
+
+        if (!$wants_original && !$wants_corrected && !$wants_difference) {
+            return;
+        }
+
+        $registration_ids = [];
+        foreach ($result as $row) {
+            if (!empty($row['id'])) {
+                $registration_ids[] = (int) $row['id'];
+            }
+        }
+
+        $rows = $this->fetchScoresByRegistration($registration_ids);
+
+        $by_registration = [];
+        foreach ($rows as $row) {
+            $by_registration[(int) $row['registration_id']][] = $row;
+        }
+
+        $average = static function (array $values): ?float {
+            $numeric = array_values(array_filter($values, static fn ($v) => $v !== null));
+
+            return $numeric ? round(array_sum($numeric) / count($numeric), 4) : null;
+        };
+
+        foreach ($result as &$row) {
+            $registration_id = (int) ($row['id'] ?? 0);
+            $evaluations = $by_registration[$registration_id] ?? [];
+
+            $corrected_values = [];
+            $original_values = [];
+
+            foreach ($evaluations as $evaluation) {
+                $current = $evaluation['current'];
+                $original = $evaluation['original'] ?? $current;
+
+                $corrected_values[] = $current;
+                $original_values[] = $original;
+            }
+
+            $average_corrected = $average($corrected_values);
+            $average_original = $average($original_values);
+
+            if ($wants_original) {
+                $row['averageOriginalScore'] = $average_original;
+            }
+            if ($wants_corrected) {
+                $row['averageCorrectedScore'] = $average_corrected;
+            }
+            if ($wants_difference) {
+                $row['scoreDifference'] = ($average_original !== null && $average_corrected !== null)
+                    ? round($average_corrected - $average_original, 4)
+                    : null;
+            }
+        }
+    }
+
+    /**
+     * Nota vigente e nota original (primeira correção aplicada) por avaliação.
+     *
+     * @param int[] $evaluation_ids
+     * @return array<int, array{current: ?float, original: ?float}>
+     */
+    private function fetchCurrentAndOriginalScores(array $evaluation_ids): array
+    {
+        if (!$evaluation_ids) {
+            return [];
+        }
+
+        $app = App::i();
+        $ids = implode(',', array_map('intval', $evaluation_ids));
+
+        // r.status = 2 = RegistrationAppealReview::STATUS_SENT (correção aplicada);
+        // menor id = primeira correção do slot.
+        $rows = $app->em->getConnection()->fetchAllAssociative("
+            SELECT
+                ev.id,
+                ev.result,
+                (
+                    SELECT r.original_score
+                    FROM registration_appeal_review r
+                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    ORDER BY r.id ASC
+                    LIMIT 1
+                ) AS original_score
+            FROM registration_evaluation ev
+            WHERE ev.id IN ({$ids})
+        ");
+
+        $snapshot = [];
+        foreach ($rows as $row) {
+            $snapshot[(int) $row['id']] = [
+                'current' => $this->toNumericScore($row['result']),
+                'original' => $this->toNumericScore($row['original_score']),
+            ];
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * Notas por inscrição, apenas avaliações ENVIADAS (ev.status = 2 =
+     * RegistrationEvaluation::STATUS_SENT — mesma base de getSentEvaluations).
+     *
+     * @param int[] $registration_ids
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchScoresByRegistration(array $registration_ids): array
+    {
+        if (!$registration_ids) {
+            return [];
+        }
+
+        $app = App::i();
+        $ids = implode(',', array_map('intval', $registration_ids));
+
+        return $app->em->getConnection()->fetchAllAssociative("
+            SELECT
+                ev.registration_id,
+                ev.result AS current,
+                (
+                    SELECT r.original_score
+                    FROM registration_appeal_review r
+                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    ORDER BY r.id ASC
+                    LIMIT 1
+                ) AS original
+            FROM registration_evaluation ev
+            WHERE ev.registration_id IN ({$ids})
+                AND ev.status = 2
+        ");
+    }
+
+    /**
+     * Resultado do slot como número (técnico: pontuação; documental: 1/−1;
+     * simples: código do status). Não numérico → null.
+     */
+    private function toNumericScore(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
     }
 
     private function isAppealScoreCorrectionEnabled(): bool

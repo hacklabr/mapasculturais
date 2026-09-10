@@ -41,7 +41,7 @@ $entity = $this->controller->requestedEntity;
             <?php $this->applyTemplateHook('registration-list-actions', 'after', ['entity' => $entity]); ?>
         </template>
         <div class="col-12"> 
-            <entity-table controller="opportunity" endpoint="findRegistrations" :identifier="identifier" type="registration" :query="query" :limit="100" :sort-options="sortOptions" :order="order" :select="select" :headers="headers" phase:="phase" required="number,options" :visible="visible" @clear-filters="clearFilters" @remove-filter="removeFilter($event)" show-index :hide-filters="hideFilters" :hide-sort="hideSort" :hide-actions='hideActions' :hide-header="hideHeader">
+            <entity-table controller="opportunity" endpoint="findRegistrations" :identifier="identifier" type="registration" :query="query" :limit="100" :sort-options="sortOptions" :order="order" :select="select" :headers="headers" phase:="phase" required="number,options" :visible="visible" :raw-processor="rawProcessor" @clear-filters="clearFilters" @remove-filter="removeFilter($event)" show-index :hide-filters="hideFilters" :hide-sort="hideSort" :hide-actions='hideActions' :hide-header="hideHeader">
                 <template #title>
                     <slot name="title"></slot>
                 </template>
@@ -128,8 +128,29 @@ $entity = $this->controller->requestedEntity;
                     <span v-else>&nbsp;</span>
                 </template>
 
-                <template #consolidatedResult="{entity}"> 
+                <template #consolidatedResult="{entity}">
                     {{consolidatedResultToString(entity)}}
+                </template>
+
+                <!-- F4 (#20) — CA-11: médias por inscrição -->
+                <template #averageOriginalScore="{entity}">
+                    {{ formatScoreColumn(entity.averageOriginalScore) }}
+                </template>
+
+                <template #averageCorrectedScore="{entity}">
+                    {{ formatScoreColumn(entity.averageCorrectedScore) }}
+                </template>
+
+                <template #scoreDifference="{entity}">
+                    <span
+                        v-if="entity.scoreDifference !== null && entity.scoreDifference !== undefined"
+                        class="semibold"
+                        :class="entity.scoreDifference > 0
+                            ? 'success__color'
+                            : (entity.scoreDifference < 0 ? 'danger__color' : '')">
+                        {{ formatScoreColumn(entity.scoreDifference) }}
+                    </span>
+                    <span v-else>-</span>
                 </template>
 
                 <template #agent="{entity}">

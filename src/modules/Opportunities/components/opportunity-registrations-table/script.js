@@ -6,8 +6,9 @@ app.component('opportunity-registrations-table', {
             required: true
         },
         visibleColumns: {
+            // F4 (#20): médias de nota visíveis por padrão (CA-11)
             type: Array,
-            default: ["agent", "status", "category", "consolidatedResult", "editable","updateTimestamp","sentTimestamp","createTimestamp"],
+            default: ["agent", "status", "category", "consolidatedResult", "averageOriginalScore", "averageCorrectedScore", "scoreDifference", "editable","updateTimestamp","sentTimestamp","createTimestamp"],
         },
         identifier: {
             type: String,
@@ -431,8 +432,44 @@ app.component('opportunity-registrations-table', {
     },
 
     methods: {
+        /**
+         * Pipeline das linhas da lista de inscritos.
+         *
+         * F4 (#20): as colunas computadas de nota (averageOriginalScore,
+         * averageCorrectedScore, scoreDifference) vêm da API (hook
+         * ApiQuery(registration).findResult do OpportunityAppealPhase), mas o
+         * Entity.populate() do SDK DESCARTA propriedades fora de
+         * $PROPERTIES/$RELATIONS — com o pipeline padrão do mc-entities as
+         * chaves morriam entre a resposta HTTP e o render (célula "-").
+         * Com rawProcessor o fetch vira raw (mc-entities/script.js:137-140)
+         * e este método povoa a entidade e copia as chaves computadas da
+         * resposta bruta.
+         */
+        rawProcessor(rawData) {
+            const registrationApi = new API('registration');
+            const registration = registrationApi.getEntityInstance(rawData.id);
+            registration.populate(rawData, true);
+
+            registration.averageOriginalScore = rawData.averageOriginalScore ?? null;
+            registration.averageCorrectedScore = rawData.averageCorrectedScore ?? null;
+            registration.scoreDifference = rawData.scoreDifference ?? null;
+
+            return registration;
+        },
+
         getStatus(actualStatus) {
             return this.statusDict.find(status => status.value === actualStatus);
+        },
+
+        // F4 (#20): colunas de média/nota — null vira "-", números sem zeros à direita.
+        formatScoreColumn(value) {
+            if (value === null || value === undefined) {
+                return '-';
+            }
+
+            const number = Number(value);
+
+            return Number.isFinite(number) ? String(parseFloat(number.toFixed(2))) : '-';
         },
 
         setStatus(selected, entity) {
