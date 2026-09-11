@@ -34,13 +34,14 @@
                 display: flex;
                 flex-direction: column;
                 gap: size(32);
-                // #56 — a comissão do recurso segue o padrão do mc-accordion do
-                // tema (fundo branco + padding lateral); o cinza e o padding 0
-                // lateral degradavam a seção de comissões.
-                padding: size(16);
-                background-color: var(--mc-white);
+                padding: size(16) 0;
+                background-color: var(--mc-gray-100);
                 max-width: 100%;
                 border-top: var(--mc-border-hairline) var(--mc-gray-300);
+
+                .mc-card {
+                    background-color: var(--mc-gray-100);
+                }
             }
 
             &__title {
@@ -171,6 +172,13 @@
     &__add-evaluation-committee {
         border-bottom: var(--mc-border-hairline) var(--mc-gray-300);
         padding-bottom: size(42);
+
+        // #56 — respiro lateral da seção de comissões: o __content do
+        // accordion do recurso não tem padding lateral (shell cinza contínuo
+        // por design), então o espaçamento é dado apenas neste wrapper —
+        // sem tocar no shell do accordion.
+        padding-left: size(16);
+        padding-right: size(16);
     }
 
     &__delete {
