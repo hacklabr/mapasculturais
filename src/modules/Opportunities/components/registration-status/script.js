@@ -22,9 +22,16 @@ app.component('registration-status', {
 
     data() {
         return {
-            processing: false, 
+            processing: false,
             entity: null,
+            // F8 (#21): notas do fluxo preliminar → recurso → final do próprio
+            // proponente (buscadas só quando publicado; leitura raw).
+            flowScores: null,
         }
+    },
+
+    mounted() {
+        this.loadAppealFlowScores();
     },
 
     computed: {
@@ -45,6 +52,61 @@ app.component('registration-status', {
             }
 
             return $MAPAS.registrationPhases[appealPhaseId] || this.entity;
+        },
+
+        /*
+         * F8 (#21) — fluxo preliminar → recurso → reavaliação → final.
+         * Gates espelham os server-side do PR3 (Opportunity::
+         * areRegistrationResultsPublished): o que não está publicado não é
+         * buscado nem exibido (critério de privacidade 5).
+         */
+        preliminaryPublished() {
+            return !!(this.opportunity.publishedRegistrations || this.opportunity.publishedPreliminaryRegistrations);
+        },
+
+        finalPublished() {
+            return !!this.opportunity.publishedRegistrations;
+        },
+
+        showAppealFlow() {
+            return !!this.appealPhase
+                && !this.opportunity.isAppealPhase
+                && (this.preliminaryPublished || !!this.appealRegistration?.id);
+        },
+
+        flowPreliminaryScore() {
+            return this.flowScores?.averageOriginalScore ?? null;
+        },
+
+        flowCorrectedScore() {
+            return this.flowScores?.averageCorrectedScore ?? null;
+        },
+
+        flowHasCorrection() {
+            return this.flowScores !== null
+                && this.flowScores.scoreDifference !== null
+                && this.flowScores.scoreDifference !== 0;
+        },
+
+        appealFlowStatusLabel() {
+            const appeal_registration = this.appealRegistration;
+            if (!appeal_registration?.id) {
+                return '';
+            }
+
+            if (appeal_registration.status == 0) {
+                return this.text('flow draft');
+            }
+
+            if (appeal_registration.status == 1) {
+                return this.text('flow sent awaiting');
+            }
+
+            // Veredito (deferido/indeferido/...) só quando o método expõe ao
+            // dono — mesmo gate server-side do bloco [Recurso] existente.
+            return this.shouldDisplayEvaluationResults(appeal_registration)
+                ? (this.appealPhase?.statusLabels?.[appeal_registration.status] ?? this.text('flow under analysis'))
+                : this.text('flow under analysis');
         },
 
         canShowAppeal() {
@@ -89,6 +151,39 @@ app.component('registration-status', {
     },
 
     methods: {
+        /**
+         * F8 (#21): notas do fluxo (médias original/corrigida da própria
+         * inscrição — propriedades computadas do módulo OpportunityAppealPhase,
+         * expostas ao dono pela API de registration).
+         *
+         * Privacidade: busca SÓ quando há resultado publicado (preliminar ou
+         * final — o mesmo gate server-side do status); leitura raw porque o
+         * populate do SDK descarta as chaves virtuais. Erros deixam o fluxo
+         * sem notas (passos exibem "—"), nunca bloqueiam a página.
+         */
+        async loadAppealFlowScores() {
+            if (!this.showAppealFlow || !this.preliminaryPublished || !this.registration?.id) {
+                return;
+            }
+
+            try {
+                const api = new API('registration');
+                const rows = await api.fetch('find', {
+                    '@select': 'id,averageOriginalScore,averageCorrectedScore,scoreDifference',
+                    'id': `EQ(${this.registration.id})`,
+                }, { raw: true, rawProcessor: data => data });
+
+                this.flowScores = rows?.[0] || null;
+            } catch (error) {
+                console.error('registration-status:loadAppealFlowScores', error);
+                this.flowScores = null;
+            }
+        },
+
+        flowScoreOrDash(value) {
+            return (value === null || value === undefined) ? '—' : this.formatNote(value);
+        },
+
         showPhaseDates() {
             const firstPhase = $MAPAS.opportunityPhases?.find((phase) => phase.isFirstPhase) || this.firstPhase;
             return !firstPhase?.hidePhaseDates;
