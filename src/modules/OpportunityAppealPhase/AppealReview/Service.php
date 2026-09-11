@@ -47,7 +47,7 @@ class Service
         }
 
         $this->assertWithinWindow($review);
-        $this->assertTechnicalSlot($slot);
+        $this->assertEvaluationMethodResolvable($slot);
 
         if ($corrected_data !== null) {
             $review->correctedValue = (object) (array) $corrected_data;
@@ -211,6 +211,11 @@ class Service
         $revision->save(true);
     }
 
+    /**
+     * Resultado recalculado pelo método do slot (setEvaluationData delega ao
+     * EvaluationMethod::getEvaluationResult): technical = pontuação ponderada;
+     * simple = código do status global; documentary = 1/-1 (válida/inválida).
+     */
     private function computeScore(RegistrationEvaluation $slot, array $evaluation_data): ?float
     {
         $tmp = new RegistrationEvaluation();
@@ -247,10 +252,19 @@ class Service
         }
     }
 
-    private function assertTechnicalSlot(RegistrationEvaluation $slot): void
+    /**
+     * F7 (#51): a correção vale para TODOS os métodos de avaliação (antes
+     * restrita ao técnico). O que a aplicação exige do slot é apenas ter um
+     * método resolvível (EMC presente) — é o método que define o formato do
+     * evaluationData e o cálculo do resultado:
+     * - technical: critérios (ids) → pontuação ponderada;
+     * - documentary: fieldName/fileGroupName → {evaluation, obs} por campo;
+     * - simple: resultado global (status) + obs.
+     */
+    private function assertEvaluationMethodResolvable(RegistrationEvaluation $slot): void
     {
         $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
-        if (!$emc || $emc->type->id !== 'technical') {
+        if (!$emc) {
             throw new PermissionDenied(App::i()->user, $slot, 'applyCorrection');
         }
     }
@@ -259,6 +273,10 @@ class Service
      * Mescla apenas chaves liberadas em released_scope.criteria (ou .fields).
      * Chaves fora do escopo com valor diferente do atual são rejeitadas;
      * chaves fora do escopo iguais ao atual (ex.: rascunho com snapshot completo) são ignoradas.
+     *
+     * Genérico por método (F7): as chaves são as do evaluationData — critérios
+     * (technical), fieldName/fileGroupName (documentary; o obs por campo viaja
+     * DENTRO do objeto do campo) ou status/obs (simple).
      */
     private function mergeWithinReleasedScope(RegistrationEvaluation $slot, RegistrationAppealReview $review, array $incoming): array
     {

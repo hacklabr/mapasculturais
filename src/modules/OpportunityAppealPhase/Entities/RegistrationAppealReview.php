@@ -230,8 +230,10 @@ class RegistrationAppealReview extends Entity
     /**
      * Retorna os usuários elegíveis para corrigir o slot vinculado a esta designação.
      *
-     * No MVP, a correção é restrita a oportunidades cuja fase principal usa
-     * `EvaluationMethodTechnical`.
+     * Elegibilidade aberta a todos os métodos de avaliação (F6 / #49,
+     * Variante 3 — override registrado na #7 em 2026-09-09): a escolha de
+     * critérios existe para `technical` e `documentary`; nos demais métodos
+     * a correção liberada é integral (releasedScope nulo).
      *
      * @return User[]
      */
@@ -246,7 +248,7 @@ class RegistrationAppealReview extends Entity
         $main_phase = $slot->registration->opportunity;
         $main_emc = $main_phase->evaluationMethodConfiguration;
 
-        if (!$main_emc || $main_emc->type->id !== 'technical') {
+        if (!$main_emc) {
             return [];
         }
 
