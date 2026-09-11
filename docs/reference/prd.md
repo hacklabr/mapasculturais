@@ -162,7 +162,7 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 | CA-1 | Gestor com `@control` na oportunidade vê, na lista de inscritos **da fase de recurso**, ação de designação de correção **apenas** para inscrições com recurso deferido. |
 | CA-2 | Modal de designação lista apenas as `RegistrationEvaluation` da fase principal daquela inscrição, uma por avaliador. |
 | CA-3 | Por slot, o gestor só pode designar como corretor: (a) o dono daquele slot; ou (b) membro da Comissão de Recursos. Avaliadores de outros slots da mesma inscrição são rejeitados. |
-| CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos. |
+| CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos. *(Cobertura atual: UI entrega corretor + escopo de critérios (F6); prazo, correction_type e visibilidade têm API pronta (PR6) e aguardam a onda de parametrização da UI.)* |
 | CA-5 | Corretor designado recebe notificação interna e e-mail informando a tarefa. |
 | CA-6 | Ambiente do corretor só expõe o slot designado (nunca as outras N-1 avaliações da mesma inscrição) e só os critérios liberados; parecer da Comissão só aparece se configurado. |
 | CA-7 | Corretor pode salvar rascunho e enviar definitivamente. Após envio, a edição é bloqueada. |
@@ -171,7 +171,7 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 | CA-10 | Se `appealPhaseAffectsSync` estiver ativo, a alteração propaga para fases posteriores apenas para a inscrição afetada. |
 | CA-11 | Listas de inscritos, avaliações e exportações exibem: nota original do slot, nota corrigida do slot e diferença; na lista de inscritos exibe também a média original, média corrigida e diferença da inscrição. |
 | CA-12 | Proponente visualiza, quando liberado pelas regras de publicação: nota preliminar, abertura do recurso, análise do recurso, nota após correção (se houver) e nota final da fase. |
-| CA-13 | Gestor acompanha status individual de cada designação (designado / rascunho / enviado / reaberto), prazo e data de envio, podendo substituir corretor ou reabrir com novo prazo. |
+| CA-13 | Gestor acompanha status individual de cada designação (designado / rascunho / enviado / reaberto), prazo e data de envio, podendo substituir corretor ou reabrir com novo prazo. *(Cobertura atual: acompanhamento por slot + substituição e cancelamento entregues (PR6/F5); reabertura pós-envio fica como follow-up — API ainda não cobre.)* |
 
 **Fora de escopo do MVP (fase 2):**
 - ~~Métodos de avaliação além de `EvaluationMethodTechnical`~~ *(superado pelo F6/#49 — elegibilidade aberta a todos os métodos; seletor de critérios em técnica/documental, demais liberados integral — ver "Matriz de métodos" acima e em `Entities/RegistrationAppealReview.php::eligibleCorrectors`)*.
