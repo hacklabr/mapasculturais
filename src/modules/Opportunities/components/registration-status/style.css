@@ -1,0 +1,63 @@
+/*
+ * registration-status (F8 #21)
+ *
+ * Estilo local no padrão do módulo (auto-enfileirado, sem build): apenas o
+ * fluxo preliminar → recurso → reavaliação → final do proponente; o restante
+ * usa as classes do tema (timeline/badges). Mobile: passos empilham.
+ */
+
+.registration-status__appeal-flow {
+    border: 1px solid var(--mc-gray-300);
+    border-radius: var(--mc-border-radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    margin-top: .75rem;
+    padding: .75rem;
+}
+
+.registration-status__appeal-flow-title {
+    margin: 0;
+}
+
+.registration-status__appeal-flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.registration-status__appeal-flow-step {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: .875rem;
+    gap: .5rem;
+}
+
+.registration-status__appeal-flow-label {
+    flex: 0 0 10rem;
+}
+
+.registration-status__appeal-flow-dot {
+    background-color: var(--mc-gray-300);
+    border-radius: var(--mc-border-radius-pill);
+    display: inline-block;
+    flex: 0 0 auto;
+    height: .5rem;
+    margin-top: .35rem;
+    width: .5rem;
+}
+
+.registration-status__appeal-flow-dot--final {
+    background-color: var(--mc-primary-500);
+}
+
+@media (max-width: 800px) {
+    .registration-status__appeal-flow-step {
+        flex-direction: column;
+        gap: .25rem;
+    }
+}

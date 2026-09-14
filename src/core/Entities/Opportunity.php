@@ -25,6 +25,7 @@ use MapasCulturais\EvaluationMethod;
  * @property-read boolean $autoPublish
  * @property \DateTime $publishTimestamp
  * @property-read boolean $publishedRegistrations
+ * @property boolean $publishedPreliminaryRegistrations
  * @property-read int $totalRegistrations
  *
  *
@@ -1133,6 +1134,84 @@ abstract class Opportunity extends \MapasCulturais\Entity
         $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).publishRegistrations:after");
 
         $app->em->commit();
+    }
+
+    /**
+     * Publica o resultado preliminar da fase avaliativa (sem aplicar selos).
+     * Requer feature flag APPEAL_TWO_STAGE_PUBLISH.
+     * Não altera publishedRegistrations (resultado final).
+     */
+    function publishPreliminaryRegistrations(){
+        $this->assertTwoStagePublishEnabled();
+        $this->checkPermission('publishRegistrations');
+
+        $app = App::i();
+        $app->em->beginTransaction();
+
+        $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).publishPreliminaryRegistrations:before");
+
+        $this->publishedPreliminaryRegistrations = true;
+        $this->save(true);
+
+        $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).publishPreliminaryRegistrations:after");
+
+        $app->em->commit();
+    }
+
+    /**
+     * Despublica o resultado preliminar. Não afeta publishedRegistrations nem selos.
+     */
+    function unPublishPreliminaryRegistrations()
+    {
+        $this->assertTwoStagePublishEnabled();
+        $this->checkPermission('publishRegistrations');
+
+        $app = App::i();
+        $app->em->beginTransaction();
+
+        $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).unPublishPreliminaryRegistrations:before");
+
+        $this->publishedPreliminaryRegistrations = false;
+        $this->save(true);
+
+        $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).unPublishPreliminaryRegistrations:after");
+
+        $app->em->commit();
+    }
+
+    /**
+     * Resultado visível ao proponente/público: final OU preliminar (com flag ON).
+     */
+    function areRegistrationResultsPublished(): bool
+    {
+        if ($this->publishedRegistrations) {
+            return true;
+        }
+
+        if (!$this->isTwoStagePublishEnabled()) {
+            return false;
+        }
+
+        return (bool) $this->publishedPreliminaryRegistrations;
+    }
+
+    protected function isTwoStagePublishEnabled(): bool
+    {
+        $module = App::i()->modules['OpportunityAppealPhase'] ?? null;
+        if ($module && method_exists($module, 'isTwoStagePublishEnabled')) {
+            return $module->isTwoStagePublishEnabled();
+        }
+
+        return (bool) env('APPEAL_TWO_STAGE_PUBLISH', false);
+    }
+
+    protected function assertTwoStagePublishEnabled(): void
+    {
+        if ($this->isTwoStagePublishEnabled()) {
+            return;
+        }
+
+        throw new PermissionDenied(App::i()->user, $this, 'publishPreliminaryRegistrations');
     }
 
     function unPublishRegistrations()

@@ -160,6 +160,23 @@ class Registrations extends SpreadsheetJob
                 continue;
             }
 
+            // F4 (#20) — CA-11: colunas computadas de nota por inscrição
+            // (módulo OpportunityAppealPhase); rótulo amigável na planilha.
+            if($property == 'averageOriginalScore') {
+                $header[$property] = i::__('Média original (antes das correções de recurso)');
+                continue;
+            }
+
+            if($property == 'averageCorrectedScore') {
+                $header[$property] = i::__('Média corrigida (vigente)');
+                continue;
+            }
+
+            if($property == 'scoreDifference') {
+                $header[$property] = i::__('Diferença (média corrigida - média original)');
+                continue;
+            }
+
             $header[$property] = $entity_class_name::getPropertyLabel($property) ?: $property;
         }
 

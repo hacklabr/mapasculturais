@@ -185,6 +185,54 @@ class Opportunity extends EntityController {
     }
 
     /**
+     * Publica o resultado preliminar das inscrições (APPEAL_TWO_STAGE_PUBLISH).
+     */
+    function ALL_publishPreliminaryRegistrations(){
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        $opportunity = $this->requestedEntity;
+
+        if(!$opportunity) {
+            $app->pass();
+        }
+
+        $opportunity->registerRegistrationMetadata();
+        $opportunity->publishPreliminaryRegistrations();
+
+        if($this->isAjax()){
+            $this->json($opportunity);
+        }else{
+            $app->redirect($app->request->getReferer());
+        }
+    }
+
+    /**
+     * Despublica o resultado preliminar das inscrições (APPEAL_TWO_STAGE_PUBLISH).
+     */
+    function ALL_unPublishPreliminaryRegistrations() {
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        $opportunity = $this->requestedEntity;
+
+        if (!$opportunity) {
+            $app->pass();
+        }
+
+        $opportunity->registerRegistrationMetadata();
+        $opportunity->unPublishPreliminaryRegistrations();
+
+        if ($this->isAjax()) {
+            $this->json($opportunity);
+        } else {
+            $app->redirect($app->request->getReferer());
+        }
+    }
+
+    /**
     * Despublica as inscrições de uma oportunidade
     * 
     * Esta ação requer autenticação e permissão na oportunidade.
@@ -1044,7 +1092,10 @@ class Opportunity extends EntityController {
         sort($evaluation_ids);
 
         $edata = [
-            '@select' => 'id,result,evaluationData,registration,user,status,createTimestamp,updateTimestamp',
+            // F4 (#20): colunas computadas de nota por slot (CA-11), preenchidas
+            // pelo hook ApiQuery(registrationevaluation).findResult do módulo
+            // OpportunityAppealPhase quando há @select com essas chaves.
+            '@select' => 'id,result,evaluationData,registration,user,status,createTimestamp,updateTimestamp,originalScore,correctedScore,scoreDifference',
             'id' => API::IN($evaluation_ids),
             "status" => API::GTE(0),
             '@permissions' => 'view'

@@ -1,0 +1,28 @@
+/*
+ * opportunity-appeal-correction-evaluation (F3 #19 + F7 #51)
+ *
+ * Estilo local no padrão do módulo (auto-enfileirado, sem build — mesmo
+ * precedente do mc-modal): apenas o layout das opções por campo do método
+ * documental; o restante usa as classes do tema (grid-12, card, button).
+ */
+
+.opportunity-appeal-correction-evaluation__field-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+.opportunity-appeal-correction-evaluation__field-option {
+    align-items: center;
+    cursor: pointer;
+    display: inline-flex;
+    gap: .25rem;
+}
+
+.opportunity-appeal-correction-evaluation__field-option input {
+    margin: 0;
+}
+
+.opportunity-appeal-correction-evaluation__criterion textarea {
+    width: 100%;
+}
