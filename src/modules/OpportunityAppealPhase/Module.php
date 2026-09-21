@@ -70,6 +70,7 @@ class Module extends \MapasCulturais\Module {
 
         $app->hook('ApiQuery(registration).findResult', function (&$result) use ($self) {
             $self->enrichRegistrationScoreColumns($result);
+            $self->enrichPreliminaryResultSnapshot($result);
         });
 
         /* Endpoint de criação de fase de recurso na oportunidade */
@@ -420,6 +421,18 @@ class Module extends \MapasCulturais\Module {
             'private' => false,
         ]);
 
+        // R02 (#64): snapshot do consolidado capturado no ato da publicação
+        // preliminar (fidelidade histórica em todos os métodos). Formato =
+        // getConsolidatedResult() por método (técnica: valor numérico;
+        // documental: 1/-1; simples: código do status MIN; qualificação:
+        // status do mapa). Gravado/limpo por Opportunity::publish/
+        // unPublishPreliminaryRegistrations; legível pelo dono.
+        $this->registerRegistrationMetadata('preliminaryResultSnapshot', [
+            'label' => i::__('Snapshot do resultado preliminar (publicação em dois estágios)'),
+            'type'  => 'string',
+            'private' => false,
+        ]);
+
         $this->registerEvauationMethodConfigurationMetadata('appealPhase', [
             'label'     => i::__('Indica se é uma fase de recurso'),
             'type'      => 'entity',
@@ -529,6 +542,51 @@ class Module extends \MapasCulturais\Module {
                     ? $current - $original
                     : null;
             }
+        }
+    }
+
+    /**
+     * R02 (#64): expõe o snapshot do resultado preliminar ao DONO quando o
+     * @select pede `preliminaryResultSnapshot`. A metadata é registrada não
+     * privada (o join EAV da própria ApiQuery já a resolve no @select); este
+     * enrichment cobre caminhos em que a chave vem null/preenchida a partir
+     * de leitura direta da metadata (mesma defesa do padrão F4 — só computa
+     * quando a chave foi pedida).
+     *
+     * @param array<int, array<string, mixed>> $result
+     */
+    public function enrichPreliminaryResultSnapshot(array &$result): void
+    {
+        if (!$result || !array_key_exists('preliminaryResultSnapshot', $result[0])) {
+            return;
+        }
+
+        $app = App::i();
+        $registration_ids = [];
+
+        foreach ($result as $row) {
+            if (!empty($row['id'])) {
+                $registration_ids[] = (int) $row['id'];
+            }
+        }
+
+        if (!$registration_ids) {
+            return;
+        }
+
+        $metas = $app->repo('RegistrationMeta')->findBy([
+            'owner' => $registration_ids,
+            'key' => 'preliminaryResultSnapshot',
+        ]);
+
+        $snapshot_by_owner = [];
+        foreach ($metas as $meta) {
+            $snapshot_by_owner[(int) $meta->owner->id] = $meta->value;
+        }
+
+        foreach ($result as &$row) {
+            $id = (int) ($row['id'] ?? 0);
+            $row['preliminaryResultSnapshot'] = $snapshot_by_owner[$id] ?? null;
         }
     }
 
