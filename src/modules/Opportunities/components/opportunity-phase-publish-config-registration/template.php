@@ -97,21 +97,60 @@ $this->import('
                             <p v-if="phase.publishedRegistrations && (!firstPhase.isContinuousFlow || (firstPhase.isContinuousFlow && firstPhase.hasEndDate))"class="bold"><?= i::__("A publicação do resultado é opcional.") ?></p>
                         </div>
                 </div>
+                <!-- R02/#65 (CA-14): publicação em dois estágios. O botão de publicação
+                     publica o resultado PRELIMINAR (sem aplicar selos); o resultado FINAL
+                     (com selos) tem botão próprio, sempre disponível na fase principal. -->
                 <div v-if="!phase.publishedRegistrations" :class="[{'col-12 grid-12': !phase.isLastPhase}, {'opportunity-phase-publish-config-registration__unpublishlist col-6': phase.isLastPhase}]">
                     <div class="opportunity-phase-publish-config-registration__button " :class="{'col-6': !phase.isLastPhase}">
-                        <mc-confirm-button  yes="<?= i::__('Publicar Resultado')?>" @confirm="publishRegistration()">
+                        <mc-confirm-button  yes="<?= i::__('Publicar resultado preliminar')?>" @confirm="publishPreliminaryRegistration()">
                             <template #button="modal">
                                 <button :class="['button', 'button--primary', {'button--large col-6': !phase.isLastPhase}, {'button--bg': phase.isLastPhase}]" @click="modal.open()">
-                                    <?= i::__("Publicar Resultados") ?>
+                                    <?= i::__("Publicar resultado preliminar") ?>
                                 </button>
                             </template>
                             <template #message="message">
-                                <h3 class="bold"><?= i::__("Deseja publicar os resultados?")?></h3>
+                                <h3 class="bold"><?= i::__("Deseja publicar o resultado preliminar?")?></h3>
                                 <p class="message"><strong>
-                                    <?= i::__("Antes de publicar os resultados, verifique cuidadosamente se todas as inscrições foram avaliadas e aplicadas.") ?></strong>
-                                    <?= i::__("Com essa ação o resultado da fase ficará público.")?>
+                                    <?= i::__("Antes de publicar o resultado preliminar, verifique cuidadosamente se todas as inscrições foram avaliadas e aplicadas.") ?></strong>
+                                    <?= i::__("Com essa ação o resultado <strong>preliminar</strong> da fase ficará público, sem aplicar os selos.")?>
                                 </p>
-                            </template> 
+                            </template>
+                        </mc-confirm-button>
+                    </div>
+                </div>
+                <div v-if="phase.publishedPreliminaryRegistrations && !phase.publishedRegistrations" class="published">
+                    <div class="col-4">
+                        <mc-confirm-button :message="text('despublicar_preliminar')" @confirm="unpublishPreliminaryRegistration()">
+                            <template #button="modal">
+                                <button class="button button--primary-outline" @click="modal.open()">
+                                    <?= i::__("Despublicar resultado preliminar") ?>
+                                </button>
+                            </template>
+                        </mc-confirm-button>
+                    </div>
+                </div>
+                <!-- R02/#65 (CA-15): resultado final, com selos. Sempre disponível na
+                     instância da fase principal (guard mainPhaseOnly/isAppealPhase),
+                     inclusive com o resultado final já publicado (re-publica e re-aplica
+                     selos), ao lado do "Despublicar" do resultado final. -->
+                <div v-if="showFinalPublishButton" class="published">
+                    <div class="col-4">
+                        <mc-confirm-button yes="<?= i::__('Publicar resultado final')?>" @confirm="publishRegistration()">
+                            <template #button="modal">
+                                <button class="button button--primary" @click="modal.open()">
+                                    <?= i::__("Publicar resultado final") ?>
+                                </button>
+                            </template>
+                            <template #message="message">
+                                <h3 class="bold"><?= i::__("Deseja publicar o resultado final?")?></h3>
+                                <p class="message"><strong>
+                                    <?= i::__("Antes de publicar o resultado final, verifique cuidadosamente se todas as inscrições foram avaliadas e aplicadas.") ?></strong>
+                                    <?= i::__("Com essa ação o resultado final da fase ficará público e os selos serão aplicados às inscrições selecionadas.")?>
+                                </p>
+                                <p class="message">
+                                    <?= i::__("Atenção: se o resultado final já estiver publicado, ele será <strong>publicado novamente</strong> e os selos serão <strong>reaplicados</strong>, sobrescrevendo ajustes de selos feitos manualmente após a publicação.")?>
+                                </p>
+                            </template>
                         </mc-confirm-button>
                     </div>
                 </div>
