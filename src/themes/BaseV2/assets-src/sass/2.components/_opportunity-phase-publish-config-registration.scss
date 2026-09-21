@@ -46,6 +46,16 @@
             }
         }
     }
+
+    // R02/#65 — ações de publicação em dois estágios (preliminar ↔ despublicar
+    // preliminar no mesmo slot; "Publicar resultado final" ao lado), no padrão
+    // de ações do tema (flex row com gap — cf. opportunity-committee-groups).
+    &__actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: size(8);
+    }
  
     &__line {
         border-top: 1px solid var(--mc-gray-100);
