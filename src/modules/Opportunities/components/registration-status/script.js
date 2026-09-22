@@ -154,7 +154,29 @@ app.component('registration-status', {
 
         statuses() {
             return this.registration.opportunity.statusLabels;
-        }
+        },
+
+        /*
+         * R02 (#66): método da fase normalizado. No item EMC do timeline o
+         * `type` vem da relação EvaluationMethodConfiguration->type
+         * (jsonSerialize:449) serializada como OBJETO EntityType
+         * ({id:'simple',...}) — comparações phase.type == 'simple' nunca
+         * casavam e o bloco de resultado renderizava vazio. Normaliza
+         * string|{id} para o slug do método.
+         */
+        phaseType() {
+            const type = this.phase?.type;
+
+            if (typeof type === 'string') {
+                return type;
+            }
+
+            if (type && typeof type === 'object') {
+                return type.id ?? type.slug ?? null;
+            }
+
+            return null;
+        },
     },
 
     methods: {
@@ -344,7 +366,8 @@ app.component('registration-status', {
 		},
         showResults(phase) {
             const types = ['qualification', 'technical', 'documentary'];
-            return types.includes(phase.type) || phase.publishEvaluationDetails;
+            // phaseType: normalização do type do item EMC (objeto EntityType).
+            return types.includes(this.phaseType) || phase.publishEvaluationDetails;
         },
 
         showRegistrationStatus(registration) {

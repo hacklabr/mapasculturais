@@ -25,9 +25,9 @@ $this->import('
         exibiam e a box ficava só no mc-status vigente.
     -->
     <template v-if="preliminarySnapshotValue !== null">
-        <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(preliminarySnapshotValue) }}</strong></div>
-        <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{ formatNote(preliminarySnapshotValue) }}</strong></div>
-        <div v-if="phase.type == 'documentary'">
+        <div v-if="phaseType == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(preliminarySnapshotValue) }}</strong></div>
+        <div v-if="phaseType == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{ formatNote(preliminarySnapshotValue) }}</strong></div>
+        <div v-if="phaseType == 'documentary'">
             <strong v-if="preliminarySnapshotValue == '1'">
                 <mc-icon name="circle" class="success__color"></mc-icon>
                 <?= i::__('Válido') ?>
@@ -37,7 +37,7 @@ $this->import('
                 <?= i::__('Inválido') ?>
             </strong>
         </div>
-        <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(preliminarySnapshotValue) }}</strong></div>
+        <div v-if="phaseType == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(preliminarySnapshotValue) }}</strong></div>
     </template>
 
     <div v-if="showResults(phase)">
@@ -46,9 +46,9 @@ $this->import('
             preliminar), mantém o comportamento vigente (consolidado atual).
         -->
         <template v-if="preliminarySnapshotValue === null">
-            <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{registration.consolidatedResult}}</strong></div>
-            <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
-            <div v-if="phase.type == 'documentary'">
+            <div v-if="phaseType == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{registration.consolidatedResult}}</strong></div>
+            <div v-if="phaseType == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
+            <div v-if="phaseType == 'documentary'">
                 <strong v-if="registration.consolidatedResult == '1'">
                     <mc-icon name="circle" class="success__color"></mc-icon>
                     <?= i::__('Válido') ?>
@@ -114,9 +114,9 @@ $this->import('
     <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
 
     <div v-if="showResults(phase)">
-        <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(registration.consolidatedResult) }}</strong></div>
-        <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
-        <div v-if="phase.type == 'documentary'">
+        <div v-if="phaseType == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(registration.consolidatedResult) }}</strong></div>
+        <div v-if="phaseType == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
+        <div v-if="phaseType == 'documentary'">
             <strong v-if="registration.consolidatedResult == '1'">
                 <mc-icon name="circle" class="success__color"></mc-icon>
                 <?= i::__('Válido') ?>
@@ -126,6 +126,6 @@ $this->import('
                 <?= i::__('Inválido') ?>
             </strong>
         </div>
-        <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(registration.consolidatedResult) }}</strong></div>
+        <div v-if="phaseType == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(registration.consolidatedResult) }}</strong></div>
     </div>
 </div>
