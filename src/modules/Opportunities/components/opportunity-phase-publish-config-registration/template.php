@@ -153,10 +153,10 @@ $this->import('
                      original + guard D3 pelo v-if do próprio container (a instância
                      da fase de recurso não renderiza este container com pr=true). -->
                 <div v-if="phase.publishedRegistrations && (!firstPhase?.isContinuousFlow || (firstPhase?.isContinuousFlow && firstPhase?.hasEndDate))">
-                    <mc-confirm-button :message="text('despublicar')" @confirm="unpublishRegistration()">
+                    <mc-confirm-button yes="<?= i::__('Despublicar resultado final')?>" :message="text('despublicar_final')" @confirm="unpublishRegistration()">
                         <template #button="modal">
                             <button :class="['button', 'button--primary-outline']" @click="modal.open()">
-                                <?= i::__("Despublicar") ?>
+                                <?= i::__("Despublicar resultado final") ?>
                             </button>
                         </template>
                     </mc-confirm-button>
