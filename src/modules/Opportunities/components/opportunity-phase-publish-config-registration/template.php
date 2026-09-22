@@ -130,7 +130,8 @@ $this->import('
                         </template>
                     </mc-confirm-button>
                 </div>
-                <div v-if="!phase.publishedRegistrations && showFinalPublishButton">
+                <!-- R02 (#72): publicar final somente após o término da fase (phaseEnded; sem registrationTo → true) -->
+                <div v-if="!phase.publishedRegistrations && showFinalPublishButton && phaseEnded">
                     <mc-confirm-button yes="<?= i::__('Publicar resultado final')?>" @confirm="publishRegistration()">
                         <template #button="modal">
                             <button :class="['button', 'button--primary', {'button--bg': phase.isLastPhase}]" @click="modal.open()">
