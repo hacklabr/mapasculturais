@@ -24,14 +24,15 @@ app.component('registration-status', {
         return {
             processing: false,
             entity: null,
-            // F8 (#21): notas do fluxo preliminar → recurso → final do próprio
-            // proponente (buscadas só quando publicado; leitura raw).
-            flowScores: null,
+            // R02 (#66): snapshot do resultado preliminar (#64) e flags de
+            // publicação, quando o payload da fase não as carrega (risco D2).
+            preliminarySnapshot: null,
+            publishFlags: null,
         }
     },
 
     mounted() {
-        this.loadAppealFlowScores();
+        this.loadPreliminaryData();
     },
 
     computed: {
@@ -55,58 +56,58 @@ app.component('registration-status', {
         },
 
         /*
-         * F8 (#21) — fluxo preliminar → recurso → reavaliação → final.
-         * Gates espelham os server-side do PR3 (Opportunity::
-         * areRegistrationResultsPublished): o que não está publicado não é
-         * buscado nem exibido (critério de privacidade 5).
+         * R02 (#66) — flags de publicação da fase principal.
+         *
+         * Risco D2: quando a fase de avaliação tem fase de recurso, o item EMC
+         * do timeline serializa o opportunity aninhado SEM as flags
+         * (OpportunityPhases/Module.php:927, simplify hardcoded). Nesse caso
+         * as flags vêm de um fetch próprio (loadPreliminaryData) — colunas
+         * públicas da API de opportunity, legíveis pelo dono.
          */
-        preliminaryPublished() {
-            return !!(this.opportunity.publishedRegistrations || this.opportunity.publishedPreliminaryRegistrations);
-        },
+        publishState() {
+            const flags = {
+                publishedRegistrations: this.opportunity.publishedRegistrations,
+                publishedPreliminaryRegistrations: this.opportunity.publishedPreliminaryRegistrations,
+            };
 
-        finalPublished() {
-            return !!this.opportunity.publishedRegistrations;
-        },
-
-        showAppealFlow() {
-            return !!this.appealPhase
-                && !this.opportunity.isAppealPhase
-                && (this.preliminaryPublished || !!this.appealRegistration?.id);
-        },
-
-        flowPreliminaryScore() {
-            return this.flowScores?.averageOriginalScore ?? null;
-        },
-
-        flowCorrectedScore() {
-            return this.flowScores?.averageCorrectedScore ?? null;
-        },
-
-        flowHasCorrection() {
-            return this.flowScores !== null
-                && this.flowScores.scoreDifference !== null
-                && this.flowScores.scoreDifference !== 0;
-        },
-
-        appealFlowStatusLabel() {
-            const appeal_registration = this.appealRegistration;
-            if (!appeal_registration?.id) {
-                return '';
+            if (flags.publishedRegistrations === undefined || flags.publishedPreliminaryRegistrations === undefined) {
+                if (this.publishFlags) {
+                    flags.publishedRegistrations = this.publishFlags.publishedRegistrations ?? false;
+                    flags.publishedPreliminaryRegistrations = this.publishFlags.publishedPreliminaryRegistrations ?? false;
+                } else {
+                    // sem dados ainda: nada publicado (conservador — não exibe)
+                    flags.publishedRegistrations = false;
+                    flags.publishedPreliminaryRegistrations = false;
+                }
             }
 
-            if (appeal_registration.status == 0) {
-                return this.text('flow draft');
+            return {
+                final: !!flags.publishedRegistrations,
+                preliminary: !!flags.publishedPreliminaryRegistrations,
+            };
+        },
+
+        /**
+         * Resultado visível ao proponente (mesma semântica server-side de
+         * Opportunity::areRegistrationResultsPublished): final OU preliminar.
+         */
+        resultsPublished() {
+            return this.publishState.final || this.publishState.preliminary;
+        },
+
+        /**
+         * Snapshot do resultado preliminar (#64), exibido no box
+         * "RESULTADO PRELIMINAR" quando há resultado publicado. Com final
+         * publicado, o snapshot (se existir) permanece como histórico.
+         */
+        preliminarySnapshotValue() {
+            if (!this.resultsPublished) {
+                return null;
             }
 
-            if (appeal_registration.status == 1) {
-                return this.text('flow sent awaiting');
-            }
+            const snapshot = this.preliminarySnapshot?.preliminaryResultSnapshot;
 
-            // Veredito (deferido/indeferido/...) só quando o método expõe ao
-            // dono — mesmo gate server-side do bloco [Recurso] existente.
-            return this.shouldDisplayEvaluationResults(appeal_registration)
-                ? (this.appealPhase?.statusLabels?.[appeal_registration.status] ?? this.text('flow under analysis'))
-                : this.text('flow under analysis');
+            return (snapshot === undefined || snapshot === null || snapshot === '') ? null : String(snapshot);
         },
 
         canShowAppeal() {
@@ -152,36 +153,72 @@ app.component('registration-status', {
 
     methods: {
         /**
-         * F8 (#21): notas do fluxo (médias original/corrigida da própria
-         * inscrição — propriedades computadas do módulo OpportunityAppealPhase,
-         * expostas ao dono pela API de registration).
-         *
-         * Privacidade: busca SÓ quando há resultado publicado (preliminar ou
-         * final — o mesmo gate server-side do status); leitura raw porque o
-         * populate do SDK descarta as chaves virtuais. Erros deixam o fluxo
-         * sem notas (passos exibem "—"), nunca bloqueiam a página.
+         * R02 (#66): busca o snapshot do preliminar e, se necessário, as
+         * flags de publicação (risco D2). Privacidade: o snapshot só é
+         * buscado quando há resultado publicado (gate server-side do status);
+         * leitura raw (populate do SDK descarta a chave virtual). Erros
+         * deixam os boxes no estado vigente, nunca bloqueiam a página.
          */
-        async loadAppealFlowScores() {
-            if (!this.showAppealFlow || !this.preliminaryPublished || !this.registration?.id) {
+        async loadPreliminaryData() {
+            if (!this.registration?.id) {
                 return;
             }
 
             try {
-                const api = new API('registration');
-                const rows = await api.fetch('find', {
-                    '@select': 'id,averageOriginalScore,averageCorrectedScore,scoreDifference',
-                    'id': `EQ(${this.registration.id})`,
-                }, { raw: true, rawProcessor: data => data });
+                // 1. Flags de publicação (risco D2): quando o payload da fase
+                //    não as carrega, busca pelas colunas públicas do opportunity.
+                const needs_flags = this.opportunity?.publishedRegistrations === undefined
+                    || this.opportunity?.publishedPreliminaryRegistrations === undefined;
 
-                this.flowScores = rows?.[0] || null;
+                if (needs_flags && this.opportunity?.id) {
+                    const opportunity_api = new API('opportunity');
+                    const flags_rows = await opportunity_api.fetch('find', {
+                        '@select': 'id,publishedRegistrations,publishedPreliminaryRegistrations',
+                        'id': `EQ(${this.opportunity.id})`,
+                    }, { raw: true, rawProcessor: data => data });
+
+                    this.publishFlags = flags_rows?.[0] || null;
+                }
+
+                // 2. Snapshot do preliminar (#64) — só quando há resultado
+                //    publicado (publishState já considera o fetch acima);
+                //    leitura raw (populate do SDK descarta a chave virtual).
+                if (this.resultsPublished) {
+                    const registration_api = new API('registration');
+                    const snapshot_rows = await registration_api.fetch('find', {
+                        '@select': 'id,preliminaryResultSnapshot',
+                        'id': `EQ(${this.registration.id})`,
+                    }, { raw: true, rawProcessor: data => data });
+
+                    this.preliminarySnapshot = snapshot_rows?.[0] || null;
+                }
             } catch (error) {
-                console.error('registration-status:loadAppealFlowScores', error);
-                this.flowScores = null;
+                console.error('registration-status:loadPreliminaryData', error);
             }
         },
 
-        flowScoreOrDash(value) {
-            return (value === null || value === undefined) ? '—' : this.formatNote(value);
+        /**
+         * R02 (#66): label do snapshot para qualificação (status do mapa:
+         * valid/invalid — PRD CA-12: habilitada/inabilitada).
+         */
+        qualificationLabel(value) {
+            if (value === 'valid') {
+                return this.text('qualification valid');
+            }
+
+            if (value === 'invalid') {
+                return this.text('qualification invalid');
+            }
+
+            return value ?? '—';
+        },
+
+        /**
+         * R02 (#66): label do snapshot para o método simples (código do
+         * status MIN → legenda oficial de status da inscrição).
+         */
+        simpleStatusLabel(code) {
+            return this.statuses?.[String(code)] ?? this.statuses?.[parseInt(code, 10)] ?? code ?? '—';
         },
 
         showPhaseDates() {

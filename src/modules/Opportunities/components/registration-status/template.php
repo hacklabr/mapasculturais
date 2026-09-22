@@ -14,22 +14,44 @@ $this->import('
 ');
 ?>
 <div v-if="!phase.isLastPhase" class="opportunity-phases-timeline__box">
-    <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado da fase:')?></label>
+    <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado preliminar:')?></label>
     <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
 
     <div v-if="showResults(phase)">
-        <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{registration.consolidatedResult}}</strong></div>
-        <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
-        <div v-if="phase.type == 'documentary'"> 
-            <strong v-if="registration.consolidatedResult == '1'">
-                <mc-icon name="circle" class="success__color"></mc-icon>
-                <?= i::__('Válido') ?>
-            </strong>
-            <strong v-if="registration.consolidatedResult == '-1'">
-                <mc-icon name="circle" class="danger__color"></mc-icon>
-                <?= i::__('Inválido') ?>
-            </strong>
-        </div>
+        <!--
+            R02 (#66): snapshot do resultado preliminar (#64) quando há
+            resultado publicado; sem publicação (ou sem snapshot — ex.: final
+            direto sem preliminar), o box mantém o comportamento vigente.
+        -->
+        <template v-if="preliminarySnapshotValue !== null">
+            <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(preliminarySnapshotValue) }}</strong></div>
+            <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{ formatNote(preliminarySnapshotValue) }}</strong></div>
+            <div v-if="phase.type == 'documentary'">
+                <strong v-if="preliminarySnapshotValue == '1'">
+                    <mc-icon name="circle" class="success__color"></mc-icon>
+                    <?= i::__('Válido') ?>
+                </strong>
+                <strong v-if="preliminarySnapshotValue == '-1'">
+                    <mc-icon name="circle" class="danger__color"></mc-icon>
+                    <?= i::__('Inválido') ?>
+                </strong>
+            </div>
+            <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(preliminarySnapshotValue) }}</strong></div>
+        </template>
+        <template v-else>
+            <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{registration.consolidatedResult}}</strong></div>
+            <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
+            <div v-if="phase.type == 'documentary'">
+                <strong v-if="registration.consolidatedResult == '1'">
+                    <mc-icon name="circle" class="success__color"></mc-icon>
+                    <?= i::__('Válido') ?>
+                </strong>
+                <strong v-if="registration.consolidatedResult == '-1'">
+                    <mc-icon name="circle" class="danger__color"></mc-icon>
+                    <?= i::__('Inválido') ?>
+                </strong>
+            </div>
+        </template>
 
         <div class="opportunity-phases-timeline__buttons">
             <div class="registration-results" v-if="registration.opportunity.isReportingPhase === '1' || registration.opportunity.isFinalReportingPhase === '1'">
@@ -74,44 +96,29 @@ $this->import('
 </div>
 
 <!--
-    F8 (#21): fluxo do proponente — resultado preliminar → recurso →
-    reavaliação → resultado final. Cada passo só renderiza quando publicado
-    (gates espelhando o server-side do PR3); nada publicado → seção omitida.
+    R02 (#66): box RESULTADO FINAL — mesma estrutura do box de resultado
+    (markup/classes do box de fase); só o resultado final consolidado por
+    método, sem notas preliminares nem passos. Não renderiza sem publicação
+    final (publishedRegistrations — coluna ORM; risco D2 resolvido com fetch
+    das flags quando o payload da fase não as carrega).
 -->
-<section
-    v-if="showAppealFlow"
-    class="registration-status__appeal-flow"
-    :aria-label="text('flow title')">
+<div v-if="!phase.isLastPhase && publishState.final" class="opportunity-phases-timeline__box">
+    <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado final:')?></label>
+    <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
 
-    <h4 class="semibold registration-status__appeal-flow-title"><?= i::__('Fluxo do recurso') ?></h4>
-
-    <ol class="registration-status__appeal-flow-steps">
-        <!-- 1. Resultado preliminar -->
-        <li v-if="preliminaryPublished" class="registration-status__appeal-flow-step">
-            <span class="registration-status__appeal-flow-dot" aria-hidden="true"></span>
-            <span class="semibold registration-status__appeal-flow-label"><?= i::__('Resultado preliminar') ?></span>
-            <span><?= i::__('Nota preliminar') ?>: <strong>{{ flowScoreOrDash(flowPreliminaryScore) }}</strong></span>
-        </li>
-
-        <!-- 2. Recurso (status do próprio proponente; veredito gated server-side) -->
-        <li v-if="appealRegistration?.id" class="registration-status__appeal-flow-step">
-            <span class="registration-status__appeal-flow-dot" aria-hidden="true"></span>
-            <span class="semibold registration-status__appeal-flow-label"><?= i::__('Recurso') ?></span>
-            <span :id="'appeal-flow-status-' + registration.id">{{ appealFlowStatusLabel }}</span>
-        </li>
-
-        <!-- 3. Reavaliação (nota pós-correção; só com resultado final publicado) -->
-        <li v-if="finalPublished && flowHasCorrection" class="registration-status__appeal-flow-step">
-            <span class="registration-status__appeal-flow-dot" aria-hidden="true"></span>
-            <span class="semibold registration-status__appeal-flow-label"><?= i::__('Reavaliação') ?></span>
-            <span><?= i::__('Nota após correção') ?>: <strong>{{ flowScoreOrDash(flowCorrectedScore) }}</strong></span>
-        </li>
-
-        <!-- 4. Resultado final -->
-        <li v-if="finalPublished" class="registration-status__appeal-flow-step">
-            <span class="registration-status__appeal-flow-dot registration-status__appeal-flow-dot--final" aria-hidden="true"></span>
-            <span class="semibold registration-status__appeal-flow-label"><?= i::__('Resultado final') ?></span>
-            <span><?= i::__('Nota final') ?>: <strong>{{ flowScoreOrDash(flowCorrectedScore) }}</strong></span>
-        </li>
-    </ol>
-</section>
+    <div v-if="showResults(phase)">
+        <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(registration.consolidatedResult) }}</strong></div>
+        <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
+        <div v-if="phase.type == 'documentary'">
+            <strong v-if="registration.consolidatedResult == '1'">
+                <mc-icon name="circle" class="success__color"></mc-icon>
+                <?= i::__('Válido') ?>
+            </strong>
+            <strong v-if="registration.consolidatedResult == '-1'">
+                <mc-icon name="circle" class="danger__color"></mc-icon>
+                <?= i::__('Inválido') ?>
+            </strong>
+        </div>
+        <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(registration.consolidatedResult) }}</strong></div>
+    </div>
+</div>
