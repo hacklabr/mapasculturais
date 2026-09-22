@@ -15,7 +15,8 @@ $this->import('
 ?>
 <div v-if="!phase.isLastPhase" class="opportunity-phases-timeline__box">
     <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado preliminar:')?></label>
-    <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
+    <!-- R02 (#66): com valor formatado, o resultado substitui o status da fase -->
+    <mc-status v-if="!hasMethodResult(preliminarySnapshotValue)" :status-name="getStatusDisplay(registration)"></mc-status>
 
     <!--
         R02 (#66): snapshot do resultado preliminar (#64) quando há resultado
@@ -111,7 +112,8 @@ $this->import('
 -->
 <div v-if="!phase.isLastPhase && publishState.final" class="opportunity-phases-timeline__box">
     <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado final:')?></label>
-    <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
+    <!-- R02 (#66): com valor formatado, o resultado substitui o status da fase -->
+    <mc-status v-if="!hasMethodResult(registration.consolidatedResult)" :status-name="getStatusDisplay(registration)"></mc-status>
 
     <!--
         R02 (#66): valor final consolidado por método FORA do gate

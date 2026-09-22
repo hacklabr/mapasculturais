@@ -285,6 +285,29 @@ app.component('registration-status', {
             return '';
         },
 
+        /**
+         * R02 (#66): a box tem valor formatado por método? Quando true, o
+         * resultado SUBSTITUI o mc-status genérico da fase (um único valor
+         * por box — review do dono). Documental exige 1/-1 (ramo com
+         * render); sem método/valor → false (status permanece).
+         */
+        hasMethodResult(value) {
+            if (value === null || value === undefined || value === '') {
+                return false;
+            }
+
+            switch (this.phaseType) {
+                case 'simple':
+                case 'technical':
+                case 'qualification':
+                    return true;
+                case 'documentary':
+                    return String(value) === '1' || String(value) === '-1';
+                default:
+                    return false;
+            }
+        },
+
         showPhaseDates() {
             const firstPhase = $MAPAS.opportunityPhases?.find((phase) => phase.isFirstPhase) || this.firstPhase;
             return !firstPhase?.hidePhaseDates;
