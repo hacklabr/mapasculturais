@@ -58,38 +58,44 @@ app.component('registration-status', {
         /*
          * R02 (#66) — flags de publicação da fase principal.
          *
-         * Risco D2: quando a fase de avaliação tem fase de recurso, o item EMC
-         * do timeline serializa o opportunity aninhado SEM as flags
-         * (OpportunityPhases/Module.php:927, simplify hardcoded). Nesse caso
-         * as flags vêm de um fetch próprio (loadPreliminaryData) — colunas
-         * públicas da API de opportunity, legíveis pelo dono.
+         * Risco D2 + lição do E2E: o item EMC do timeline é um objeto cru SEM
+         * __objectType — o computed opportunity() resolve para o PRÓPRIO item
+         * EMC, cujas flags de publicação estão aninhadas em item.opportunity
+         * (OpportunityPhases/Module.php:927). Resolução multi-fonte: o
+         * opportunity resolvido, o opportunity aninhado do item e o fetch
+         * próprio (colunas públicas da API, legíveis pelo dono). Parse truthy
+         * EXPLÍCITO — imune a 'false'/'0' serializados como string.
          */
         publishState() {
-            const flags = {
-                publishedRegistrations: this.opportunity.publishedRegistrations,
-                publishedPreliminaryRegistrations: this.opportunity.publishedPreliminaryRegistrations,
-            };
+            const sources = [
+                this.opportunity,
+                this.phase?.opportunity,
+                this.publishFlags,
+            ].filter(Boolean);
 
-            if (flags.publishedRegistrations === undefined || flags.publishedPreliminaryRegistrations === undefined) {
-                if (this.publishFlags) {
-                    flags.publishedRegistrations = this.publishFlags.publishedRegistrations ?? false;
-                    flags.publishedPreliminaryRegistrations = this.publishFlags.publishedPreliminaryRegistrations ?? false;
-                } else {
-                    // sem dados ainda: nada publicado (conservador — não exibe)
-                    flags.publishedRegistrations = false;
-                    flags.publishedPreliminaryRegistrations = false;
-                }
-            }
+            const isTruthyFlag = (value) => value === true || value === 1 || value === '1' || value === 'true';
+
+            const flag = (key) => sources.some(source => isTruthyFlag(source[key]));
 
             return {
-                final: !!flags.publishedRegistrations,
-                preliminary: !!flags.publishedPreliminaryRegistrations,
+                final: flag('publishedRegistrations'),
+                preliminary: flag('publishedPreliminaryRegistrations'),
             };
         },
 
         /**
+         * Id da fase principal para o fetch das flags (risco D2): o
+         * opportunity aninhado do item EMC, quando existir; senão o
+         * opportunity resolvido pelo computed.
+         */
+        publishFlagsOpportunityId() {
+            return this.phase?.opportunity?.id ?? this.opportunity?.id ?? null;
+        },
+
+        /**
          * Resultado visível ao proponente (mesma semântica server-side de
-         * Opportunity::areRegistrationResultsPublished): final OU preliminar.
+         * Opportunity::areRegistrationResultsPublished): final OU preliminar
+         * (preliminar true implica two-stage ON por construção).
          */
         resultsPublished() {
             return this.publishState.final || this.publishState.preliminary;
@@ -165,16 +171,21 @@ app.component('registration-status', {
             }
 
             try {
-                // 1. Flags de publicação (risco D2): quando o payload da fase
-                //    não as carrega, busca pelas colunas públicas do opportunity.
-                const needs_flags = this.opportunity?.publishedRegistrations === undefined
-                    || this.opportunity?.publishedPreliminaryRegistrations === undefined;
+                // 1. Flags de publicação (risco D2): quando nenhum objeto do
+                //    payload as carrega (nem o opportunity resolvido, nem o
+                //    aninhado do item EMC), busca pelas colunas públicas.
+                const hasFlag = (source) => !!source
+                    && (source.publishedRegistrations !== undefined
+                        || source.publishedPreliminaryRegistrations !== undefined);
 
-                if (needs_flags && this.opportunity?.id) {
+                const needs_flags = !hasFlag(this.opportunity) && !hasFlag(this.phase?.opportunity);
+                const flags_opportunity_id = this.publishFlagsOpportunityId;
+
+                if (needs_flags && flags_opportunity_id) {
                     const opportunity_api = new API('opportunity');
                     const flags_rows = await opportunity_api.fetch('find', {
                         '@select': 'id,publishedRegistrations,publishedPreliminaryRegistrations',
-                        'id': `EQ(${this.opportunity.id})`,
+                        'id': `EQ(${flags_opportunity_id})`,
                     }, { raw: true, rawProcessor: data => data });
 
                     this.publishFlags = flags_rows?.[0] || null;
