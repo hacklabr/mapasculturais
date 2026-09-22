@@ -106,7 +106,7 @@ $this->import('
                     <div v-if="!phase.publishedRegistrations">
                         <mc-confirm-button v-if="!phase.publishedPreliminaryRegistrations" yes="<?= i::__('Publicar resultado preliminar')?>" @confirm="publishPreliminaryRegistration()">
                             <template #button="modal">
-                                <button :class="['button', 'button--primary', {'button--large': !phase.isLastPhase}, {'button--bg': phase.isLastPhase}]" @click="modal.open()">
+                                <button :class="['button', 'button--primary', {'button--bg': phase.isLastPhase}]" @click="modal.open()">
                                     <?= i::__("Publicar resultado preliminar") ?>
                                 </button>
                             </template>
@@ -120,7 +120,7 @@ $this->import('
                         </mc-confirm-button>
                         <mc-confirm-button v-else :message="text('despublicar_preliminar')" @confirm="unpublishPreliminaryRegistration()">
                             <template #button="modal">
-                                <button :class="['button', 'button--primary-outline', {'button--large': !phase.isLastPhase}]" @click="modal.open()">
+                                <button :class="['button', 'button--primary-outline']" @click="modal.open()">
                                     <?= i::__("Despublicar resultado preliminar") ?>
                                 </button>
                             </template>
@@ -129,7 +129,7 @@ $this->import('
                     <div v-if="showFinalPublishButton">
                         <mc-confirm-button yes="<?= i::__('Publicar resultado final')?>" @confirm="publishRegistration()">
                             <template #button="modal">
-                                <button :class="['button', 'button--primary', {'button--large': !phase.isLastPhase}, {'button--bg': phase.isLastPhase}]" @click="modal.open()">
+                                <button :class="['button', 'button--primary', {'button--bg': phase.isLastPhase}]" @click="modal.open()">
                                     <?= i::__("Publicar resultado final") ?>
                                 </button>
                             </template>
