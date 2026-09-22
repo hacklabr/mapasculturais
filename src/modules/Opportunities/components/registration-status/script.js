@@ -129,8 +129,13 @@ app.component('registration-status', {
                 return false;
             }
 
-
-            return this.registration.status > 1 && this.registration.status <= 10;
+            /*
+                R02 (#71) — decisão do dono 2026-09-22: o gatilho do recurso é
+                EXCLUSIVAMENTE o resultado preliminar publicado (publishState,
+                multi-fonte do #66). O status da inscrição deixa de ser
+                condição — a JANELA da fase de recurso continua valendo acima.
+            */
+            return this.publishState.preliminary;
         },
 
         opportunity () {

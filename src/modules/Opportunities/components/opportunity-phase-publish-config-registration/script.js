@@ -56,6 +56,22 @@ app.component('opportunity-phase-publish-config-registration' , {
             return this.phase?.registrationTo?.isFuture();
 
         },
+
+        /*
+            R02 (#72): a fase terminou? Sem registrationTo definido → true
+            (comportamento atual — botão disponível). Parsing pelo McDate da
+            própria prop (DateTime serializado {date, timezone}; isPast()
+            compara no timezone do objeto, não do browser — mesmo padrão das
+            janelas da fase de recurso no registration-status).
+        */
+        phaseEnded() {
+            if (!this.phase?.registrationTo) {
+                return true;
+            }
+
+            return this.phase.registrationTo.isPast();
+        },
+
         minDate () {
             return this.phase.evaluationTo?._date || this.phase.registrationTo?._date;
         },
