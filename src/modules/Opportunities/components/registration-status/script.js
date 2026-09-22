@@ -254,6 +254,37 @@ app.component('registration-status', {
             return this.statuses?.[String(code)] ?? this.statuses?.[parseInt(code, 10)] ?? code ?? '—';
         },
 
+        /**
+         * R02 (#66): cor do status do método simples — legenda oficial da
+         * inscrição (docblock de getStatusDisplay: 10 verde, 8 laranja,
+         * 3 vermelho, 2 roxo) no padrão do tema, igual ao verifyState do
+         * appeal-phase-chat (classes utilitárias _atoms.scss).
+         */
+        simpleStatusColor(code) {
+            return {
+                '10': 'success__color',
+                '8': 'warning__color',
+                '3': 'danger__color',
+                '2': 'danger__color',
+            }[String(code)] ?? '';
+        },
+
+        /**
+         * R02 (#66): cor do resultado de qualificação — Habilitada →
+         * success; Inabilitada → danger (padrão do documental).
+         */
+        qualificationColor(value) {
+            if (value === 'valid') {
+                return 'success__color';
+            }
+
+            if (value === 'invalid') {
+                return 'danger__color';
+            }
+
+            return '';
+        },
+
         showPhaseDates() {
             const firstPhase = $MAPAS.opportunityPhases?.find((phase) => phase.isFirstPhase) || this.firstPhase;
             return !firstPhase?.hidePhaseDates;
