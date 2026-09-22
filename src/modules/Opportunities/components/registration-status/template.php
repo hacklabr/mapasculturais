@@ -17,28 +17,35 @@ $this->import('
     <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado preliminar:')?></label>
     <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
 
+    <!--
+        R02 (#66): snapshot do resultado preliminar (#64) quando há resultado
+        publicado. FORA do gate showResults (detalhamento por método): o
+        snapshot é RESULTADO, não detalhe — sem isso, métodos sem
+        detalhamento (ex.: simples, sem publishEvaluationDetails) nunca o
+        exibiam e a box ficava só no mc-status vigente.
+    -->
+    <template v-if="preliminarySnapshotValue !== null">
+        <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(preliminarySnapshotValue) }}</strong></div>
+        <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{ formatNote(preliminarySnapshotValue) }}</strong></div>
+        <div v-if="phase.type == 'documentary'">
+            <strong v-if="preliminarySnapshotValue == '1'">
+                <mc-icon name="circle" class="success__color"></mc-icon>
+                <?= i::__('Válido') ?>
+            </strong>
+            <strong v-if="preliminarySnapshotValue == '-1'">
+                <mc-icon name="circle" class="danger__color"></mc-icon>
+                <?= i::__('Inválido') ?>
+            </strong>
+        </div>
+        <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(preliminarySnapshotValue) }}</strong></div>
+    </template>
+
     <div v-if="showResults(phase)">
         <!--
-            R02 (#66): snapshot do resultado preliminar (#64) quando há
-            resultado publicado; sem publicação (ou sem snapshot — ex.: final
-            direto sem preliminar), o box mantém o comportamento vigente.
+            Sem publicação (ou sem snapshot — ex.: final direto sem
+            preliminar), mantém o comportamento vigente (consolidado atual).
         -->
-        <template v-if="preliminarySnapshotValue !== null">
-            <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(preliminarySnapshotValue) }}</strong></div>
-            <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{ formatNote(preliminarySnapshotValue) }}</strong></div>
-            <div v-if="phase.type == 'documentary'">
-                <strong v-if="preliminarySnapshotValue == '1'">
-                    <mc-icon name="circle" class="success__color"></mc-icon>
-                    <?= i::__('Válido') ?>
-                </strong>
-                <strong v-if="preliminarySnapshotValue == '-1'">
-                    <mc-icon name="circle" class="danger__color"></mc-icon>
-                    <?= i::__('Inválido') ?>
-                </strong>
-            </div>
-            <div v-if="phase.type == 'simple'"><?= i::__('Status:') ?> <strong>{{ simpleStatusLabel(preliminarySnapshotValue) }}</strong></div>
-        </template>
-        <template v-else>
+        <template v-if="preliminarySnapshotValue === null">
             <div v-if="phase.type == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{registration.consolidatedResult}}</strong></div>
             <div v-if="phase.type == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
             <div v-if="phase.type == 'documentary'">
