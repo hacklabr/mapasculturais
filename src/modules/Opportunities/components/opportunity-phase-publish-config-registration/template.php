@@ -97,25 +97,15 @@ $this->import('
                             <p v-if="phase.publishedRegistrations && (!firstPhase.isContinuousFlow || (firstPhase.isContinuousFlow && firstPhase.hasEndDate))"class="bold"><?= i::__("A publicação do resultado é opcional.") ?></p>
                         </div>
                 </div>
-                <div v-if="phase.publishedRegistrations && (!firstPhase.isContinuousFlow || (firstPhase.isContinuousFlow && firstPhase.hasEndDate))" class="published">
-                    <div class="col-4">
-                        <mc-confirm-button :message="text('despublicar')" @confirm="unpublishRegistration()">
-                            <template #button="modal">
-                                <button class="button button--primary-outline" @click="modal.open()">
-                                    <?= i::__("Despublicar") ?>
-                                </button>
-                            </template>
-                        </mc-confirm-button>
-                    </div>
-                </div>
             </div>
-            <!-- R02/#65 (CA-14/CA-15): ações de publicação em dois estágios, lado a lado
-                 e centralizadas, na largura plena do bloco (col-12; fora da coluna
-                 col-6/__unpublishedlast do layout original, que limitava a ~50%).
+            <!-- R02/#65 (CA-14/CA-15 + override #7 2026-09-22): ações de publicação em
+                 dois estágios, lado a lado e centralizadas, na largura plena do bloco
+                 (col-12; fora da coluna col-6/__unpublishedlast do layout original).
                  Slot preliminar: "Publicar resultado preliminar" dá lugar ao
                  "Despublicar resultado preliminar" (mutuamente exclusivos); o
-                 resultado FINAL (com selos) tem botão próprio, sempre disponível
-                 na instância da fase principal (guard mainPhaseOnly/isAppealPhase). -->
+                 "Publicar resultado final" (com selos) NÃO é mais sempre disponível
+                 (override #7): só com o final não publicado. Guard de instância
+                 (mainPhaseOnly/isAppealPhase) mantido em todos os botões de final. -->
             <div v-if="!phase.publishedRegistrations || showFinalPublishButton" class="col-12 opportunity-phase-publish-config-registration__actions">
                 <div v-if="!phase.publishedRegistrations">
                     <mc-confirm-button v-if="!phase.publishedPreliminaryRegistrations" yes="<?= i::__('Publicar resultado preliminar')?>" @confirm="publishPreliminaryRegistration()">
@@ -140,7 +130,7 @@ $this->import('
                         </template>
                     </mc-confirm-button>
                 </div>
-                <div v-if="showFinalPublishButton">
+                <div v-if="!phase.publishedRegistrations && showFinalPublishButton">
                     <mc-confirm-button yes="<?= i::__('Publicar resultado final')?>" @confirm="publishRegistration()">
                         <template #button="modal">
                             <button :class="['button', 'button--primary', {'button--bg': phase.isLastPhase}]" @click="modal.open()">
@@ -156,6 +146,19 @@ $this->import('
                             <p class="message">
                                 <?= i::__("Atenção: se o resultado final já estiver publicado, ele será <strong>publicado novamente</strong> e os selos serão <strong>reaplicados</strong>, sobrescrevendo ajustes de selos feitos manualmente após a publicação.")?>
                             </p>
+                        </template>
+                    </mc-confirm-button>
+                </div>
+                <!-- R02/#65: o "Despublicar" do resultado FINAL entra no container de
+                     ações (lado a lado com o "Publicar resultado final"). Condição
+                     original + guard D3 pelo v-if do próprio container (a instância
+                     da fase de recurso não renderiza este container com pr=true). -->
+                <div v-if="phase.publishedRegistrations && (!firstPhase?.isContinuousFlow || (firstPhase?.isContinuousFlow && firstPhase?.hasEndDate))">
+                    <mc-confirm-button yes="<?= i::__('Despublicar resultado final')?>" :message="text('despublicar_final')" @confirm="unpublishRegistration()">
+                        <template #button="modal">
+                            <button :class="['button', 'button--primary-outline']" @click="modal.open()">
+                                <?= i::__("Despublicar resultado final") ?>
+                            </button>
                         </template>
                     </mc-confirm-button>
                 </div>
