@@ -113,7 +113,13 @@ $this->import('
     <label class="semibold opportunity-phases-timeline__label"><?= i::__('Resultado final:')?></label>
     <mc-status :status-name="getStatusDisplay(registration)"></mc-status>
 
-    <div v-if="showResults(phase)">
+    <!--
+        R02 (#66): valor final consolidado por método FORA do gate
+        showResults (mesma doutrina do snapshot: resultado é resultado, não
+        detalhe — simples sem publishEvaluationDetails não passava no gate e
+        a box ficava só no mc-status). Fonte: o vigente já exposto ao dono.
+    -->
+    <div>
         <div v-if="phaseType == 'qualification'"><?= i::__('Resultado:') ?> <strong>{{ qualificationLabel(registration.consolidatedResult) }}</strong></div>
         <div v-if="phaseType == 'technical'"><?= i::__('Pontuação:') ?> <strong>{{formatNote(registration.consolidatedResult)}}</strong></div>
         <div v-if="phaseType == 'documentary'">
