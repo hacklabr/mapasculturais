@@ -201,9 +201,20 @@ class Module extends \MapasCulturais\Module {
                 }
 
                 $appeal_phase = $app->repo("Opportunity")->findOneBy(['parent' => $opportunity->id, 'status' => Opportunity::STATUS_APPEAL_PHASE]);
-                
+
                 if (!$appeal_phase) {
                     $this->errorJson(sprintf(i::__('Não existe uma fase de recurso para a %s'), $opportunity->name), 403);
+                }
+
+                /*
+                    R02 (#71) — decisão do dono 2026-09-22: o recurso é aberto
+                    pela publicação do resultado PRELIMINAR. Espelha o gate
+                    client-side (canShowAppeal → publishState.preliminary);
+                    parse booleano da metadata registrada pelo módulo
+                    (default false), como os demais gates do two-stage.
+                */
+                if (!(bool) $opportunity->publishedPreliminaryRegistrations) {
+                    $this->errorJson(i::__('O resultado preliminar precisa estar publicado para solicitar recurso'), 403);
                 }
 
                 // Verifica se já existe inscrição de recurso com o mesmo number
