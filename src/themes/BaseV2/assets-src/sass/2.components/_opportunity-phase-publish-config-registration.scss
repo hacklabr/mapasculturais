@@ -50,12 +50,14 @@
     // R02/#65 — ações de publicação em dois estágios (preliminar ↔ despublicar
     // preliminar no mesmo slot; "Publicar resultado final" ao lado), no padrão
     // de ações do tema (flex row com gap — cf. opportunity-committee-groups).
-    // `.button` aqui é SEMPRE largura natural: no tema, `.button--large` é
-    // width:100% (largura total), o que dentro do flex com wrap ocupava a
-    // linha inteira e empurrava o botão vizinho para baixo (feedback #65).
+    // No markup é col-12 (largura plena do bloco, fora da col-6 original) e os
+    // botões ficam centralizados. `.button` aqui é SEMPRE largura natural: no
+    // tema, `.button--large` é width:100%, o que dentro do flex com wrap
+    // ocupava a linha inteira e empurrava o botão vizinho para baixo (#65).
     &__actions {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         align-items: center;
         gap: size(8);
 
