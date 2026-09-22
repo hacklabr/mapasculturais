@@ -97,17 +97,6 @@ $this->import('
                             <p v-if="phase.publishedRegistrations && (!firstPhase.isContinuousFlow || (firstPhase.isContinuousFlow && firstPhase.hasEndDate))"class="bold"><?= i::__("A publicação do resultado é opcional.") ?></p>
                         </div>
                 </div>
-                <div v-if="phase.publishedRegistrations && (!firstPhase.isContinuousFlow || (firstPhase.isContinuousFlow && firstPhase.hasEndDate))" class="published">
-                    <div class="col-4">
-                        <mc-confirm-button :message="text('despublicar')" @confirm="unpublishRegistration()">
-                            <template #button="modal">
-                                <button class="button button--primary-outline" @click="modal.open()">
-                                    <?= i::__("Despublicar") ?>
-                                </button>
-                            </template>
-                        </mc-confirm-button>
-                    </div>
-                </div>
             </div>
             <!-- R02/#65 (CA-14/CA-15): ações de publicação em dois estágios, lado a lado
                  e centralizadas, na largura plena do bloco (col-12; fora da coluna
@@ -156,6 +145,19 @@ $this->import('
                             <p class="message">
                                 <?= i::__("Atenção: se o resultado final já estiver publicado, ele será <strong>publicado novamente</strong> e os selos serão <strong>reaplicados</strong>, sobrescrevendo ajustes de selos feitos manualmente após a publicação.")?>
                             </p>
+                        </template>
+                    </mc-confirm-button>
+                </div>
+                <!-- R02/#65: o "Despublicar" do resultado FINAL entra no container de
+                     ações (lado a lado com o "Publicar resultado final"). Condição
+                     original + guard D3 pelo v-if do próprio container (a instância
+                     da fase de recurso não renderiza este container com pr=true). -->
+                <div v-if="phase.publishedRegistrations && (!firstPhase?.isContinuousFlow || (firstPhase?.isContinuousFlow && firstPhase?.hasEndDate))">
+                    <mc-confirm-button :message="text('despublicar')" @confirm="unpublishRegistration()">
+                        <template #button="modal">
+                            <button :class="['button', 'button--primary-outline']" @click="modal.open()">
+                                <?= i::__("Despublicar") ?>
+                            </button>
                         </template>
                     </mc-confirm-button>
                 </div>
