@@ -14,4 +14,8 @@ return [
   'sucesso_despublicar_preliminar' => i::__("Resultado preliminar despublicado com sucesso"),
   'sucesso_publicar_final' => i::__("Resultado final publicado com sucesso e selos aplicados"),
   'sucesso_despublicar_final' => i::__("Resultado final despublicado com sucesso"),
+  // R03/#76 — publicação única do resultado da fase de recurso (feedback próprio)
+  'despublicar_recurso' => i::__("Tem certeza que deseja despublicar o resultado do recurso?"),
+  'sucesso_publicar_recurso' => i::__("Resultado do recurso publicado com sucesso e selos aplicados"),
+  'sucesso_despublicar_recurso' => i::__("Resultado do recurso despublicado com sucesso"),
 ];
