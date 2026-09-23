@@ -134,6 +134,14 @@ $this->import('
                 <?= i::__('Inválido') ?>
             </strong>
         </div>
-        <div v-if="phaseType == 'simple'"><?= i::__('Status:') ?> <strong :class="simpleStatusColor(registration.consolidatedResult)"><mc-icon name="circle" :class="simpleStatusColor(registration.consolidatedResult)"></mc-icon> {{ simpleStatusLabel(registration.consolidatedResult) }}</strong></div>
+        <!--
+            R03 (#78): no método simples, o resultado FINAL aplicado é o
+            status da inscrição (recurso deferido pode torná-lo Suplente etc.,
+            enquanto o consolidatedResult do MIN avaliações ainda reflete o
+            estágio anterior — evidência 65/67: consolidated=3/status=8).
+            Os demais métodos seguem com consolidatedResult (pendência
+            técnica declarada na issue — não mudar sem evidência).
+        -->
+        <div v-if="phaseType == 'simple'"><?= i::__('Status:') ?> <strong :class="simpleStatusColor(registration.status)"><mc-icon name="circle" :class="simpleStatusColor(registration.status)"></mc-icon> {{ simpleStatusLabel(registration.status) }}</strong></div>
     </div>
 </div>
