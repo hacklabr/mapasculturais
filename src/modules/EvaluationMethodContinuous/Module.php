@@ -573,12 +573,19 @@ class Module extends \MapasCulturais\EvaluationMethod
     /**
      * Retorna se os detalhes de uma avaliação pode ou não serem exibidos
      *
+     * R03 (#77): usa o gate canônico areRegistrationResultsPublished
+     * (Opportunity.php — cobre final E preliminar com two-stage), mantendo
+     * allow_proponent_response como disjunção (backward compat). Antes só
+     * publicação FINAL abria a exibição — com recurso deferido e apenas o
+     * preliminar publicado, o acompanhamento mascarava o status real.
+     *
      * @param Registration $registration
      * @return boolean
      */
     function shouldDisplayEvaluationResults(Registration $registration): bool
     {
-        return $registration->opportunity->publishedRegistrations || $registration->opportunity->allow_proponent_response;
+        return $registration->opportunity->areRegistrationResultsPublished()
+            || $registration->opportunity->allow_proponent_response;
     }
 
 }
