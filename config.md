@@ -6,3 +6,4 @@
 - host: github.com
 - project: hacklabr/mapasculturais
 - board: 29
+- setup-verified: 1.5.0
