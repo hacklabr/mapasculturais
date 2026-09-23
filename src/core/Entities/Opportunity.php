@@ -1140,6 +1140,9 @@ abstract class Opportunity extends \MapasCulturais\Entity
      * Publica o resultado preliminar da fase avaliativa (sem aplicar selos).
      * Requer feature flag APPEAL_TWO_STAGE_PUBLISH.
      * Não altera publishedRegistrations (resultado final).
+     *
+     * R02 (#64): captura o snapshot do consolidado por inscrição no ato da
+     * publicação (fidelidade histórica em todos os métodos).
      */
     function publishPreliminaryRegistrations(){
         $this->assertTwoStagePublishEnabled();
@@ -1153,6 +1156,8 @@ abstract class Opportunity extends \MapasCulturais\Entity
         $this->publishedPreliminaryRegistrations = true;
         $this->save(true);
 
+        $this->writePreliminaryResultSnapshots();
+
         $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).publishPreliminaryRegistrations:after");
 
         $app->em->commit();
@@ -1160,6 +1165,8 @@ abstract class Opportunity extends \MapasCulturais\Entity
 
     /**
      * Despublica o resultado preliminar. Não afeta publishedRegistrations nem selos.
+     *
+     * R02 (#64): limpa o snapshot capturado na publicação preliminar.
      */
     function unPublishPreliminaryRegistrations()
     {
@@ -1174,9 +1181,77 @@ abstract class Opportunity extends \MapasCulturais\Entity
         $this->publishedPreliminaryRegistrations = false;
         $this->save(true);
 
+        $this->clearPreliminaryResultSnapshots();
+
         $app->applyHookBoundTo($this, "entity({$this->getHookClassPath()}).unPublishPreliminaryRegistrations:after");
 
         $app->em->commit();
+    }
+
+    /**
+     * R02 (#64): grava a metadata `preliminaryResultSnapshot` (registrada pelo
+     * módulo OpportunityAppealPhase) com o consolidado vigente de cada
+     * inscrição enviada da fase — formato por método (getConsolidatedResult:
+     * técnica = valor numérico; documental = 1/-1; simples = código do status
+     * MIN; qualificação = status do mapa). Sem o módulo (metadata não
+     * registrada) a captura é no-op. Padrão de lote do publishRegistrations.
+     */
+    private function writePreliminaryResultSnapshots(): void
+    {
+        $app = App::i();
+
+        if (!array_key_exists('preliminaryResultSnapshot', $app->getRegisteredMetadata(Registration::class))) {
+            return;
+        }
+
+        $registration_ids = (new ApiQuery(Registration::class, [
+            'opportunity' => "EQ({$this->id})",
+            'status' => 'GTE(1)', // inscrições enviadas: têm resultado consolidado
+        ]))->findIds();
+
+        foreach ($registration_ids as $registration_id) {
+            $registration = $app->repo('Registration')->find($registration_id);
+
+            // Consolidado no formato do método (getEvaluationResultValue →
+            // EvaluationMethod::getConsolidatedResult): técnica = valor
+            // numérico; documental = 1/-1; simples = código do status;
+            // qualificação = status do mapa.
+            $consolidated = $registration->getEvaluationResultValue();
+            $registration->preliminaryResultSnapshot = $consolidated !== null ? (string) $consolidated : null;
+            $registration->save(true);
+
+            $app->em->flush();
+            $app->em->clear();
+        }
+    }
+
+    /**
+     * R02 (#64): remove o snapshot das inscrições da fase (despublicação
+     * preliminar). A publicação final NÃO passa por aqui — o snapshot
+     * permanece como registro histórico do estágio preliminar.
+     */
+    private function clearPreliminaryResultSnapshots(): void
+    {
+        $app = App::i();
+
+        if (!array_key_exists('preliminaryResultSnapshot', $app->getRegisteredMetadata(Registration::class))) {
+            return;
+        }
+
+        $registration_ids = (new ApiQuery(Registration::class, [
+            'opportunity' => "EQ({$this->id})",
+            'status' => 'GTE(1)',
+        ]))->findIds();
+
+        foreach ($registration_ids as $registration_id) {
+            $registration = $app->repo('Registration')->find($registration_id);
+
+            $registration->preliminaryResultSnapshot = null;
+            $registration->save(true);
+
+            $app->em->flush();
+            $app->em->clear();
+        }
     }
 
     /**
