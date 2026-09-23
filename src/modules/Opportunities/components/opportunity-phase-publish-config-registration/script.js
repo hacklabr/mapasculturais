@@ -38,8 +38,11 @@ app.component('opportunity-phase-publish-config-registration' , {
          * Guard de instância (R02/#65 — risco D3): este componente também é
          * instanciado para a fase de recurso, via opportunity-appeal-phase-config
          * (-> opportunity-phase-status e -> opportunity-phase-list-evaluation).
-         * O botão "Publicar resultado final" (sempre disponível) só deve existir
-         * na instância da fase principal; o contexto de recurso repassa false.
+         * R02: o botão "Publicar resultado final" (sempre disponível) só devia
+         * existir na instância da fase principal; o contexto de recurso repassa
+         * false. R03 (#76): com false, o dois-estágios fica oculto e entram os
+         * botões próprios do recurso ("Publicar/Despublicar resultado do
+         * recurso" — mesmas ações do final, copy próprio).
          */
         mainPhaseOnly: {
             type: Boolean,
@@ -106,6 +109,29 @@ app.component('opportunity-phase-publish-config-registration' , {
         showFinalPublishButton() {
             return this.mainPhaseOnly && !this.isAppealPhase;
         },
+        /**
+         * R03 (#76): instância da fase de recurso — o opportunity-appeal-phase-config
+         * repassa main-phase-only=false aos intermediários (opportunity-phase-status /
+         * opportunity-phase-list-evaluation). Distinto do computed isAppealPhase
+         * (guard por metadado da entidade, que não vem serializado no payload de
+         * fases): aqui o marcador de contexto é a própria prop.
+         */
+        isAppealPhaseInstance() {
+            return !this.mainPhaseOnly;
+        },
+        /**
+         * R03 (#76): visibilidade do container de ações. Instância principal:
+         * inalterada (R02/#65). Instância da fase de recurso: botões somente
+         * com a fase terminada (publicar — gate phaseEnded do #72) ou já
+         * publicada (despublicar); antes do término, nenhum botão renderiza.
+         */
+        showActionsContainer() {
+            if (this.isAppealPhaseInstance) {
+                return this.phaseEnded || !!this.phase.publishedRegistrations;
+            }
+
+            return !this.phase.publishedRegistrations || this.showFinalPublishButton;
+        },
     },
 
     methods: {
@@ -135,6 +161,29 @@ app.component('opportunity-phase-publish-config-registration' , {
             this.phase.POST('unpublishRegistrations', this.phase).then(item => {
                 this.phase.publishedRegistrations = false;
                 messages.success(this.text('sucesso_despublicar_final'));
+            });
+        },
+        /**
+         * R03 (#76): mesma ação do publicar final (POST publishRegistrations —
+         * publica com selos o resultado da fase de recurso), com mensagem de
+         * sucesso própria do contexto de recurso.
+         */
+        publishAppealRegistration () {
+            const messages = useMessages();
+            this.phase.POST('publishRegistrations', this.phase).then(item => {
+                this.phase.publishedRegistrations = true;
+                messages.success(this.text('sucesso_publicar_recurso'));
+            });
+        },
+        /**
+         * R03 (#76): mesma ação do despublicar final (POST unpublishRegistrations),
+         * com mensagem de sucesso própria do contexto de recurso.
+         */
+        unpublishAppealRegistration () {
+            const messages = useMessages();
+            this.phase.POST('unpublishRegistrations', this.phase).then(item => {
+                this.phase.publishedRegistrations = false;
+                messages.success(this.text('sucesso_despublicar_recurso'));
             });
         }
     }
