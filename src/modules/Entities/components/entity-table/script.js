@@ -371,16 +371,25 @@ app.component('entity-table', {
             return fragments.join(',');
         },
 
+        /**
+         * Export fragments for a single column.
+         * An explicit `exportField` always wins: it is the API/job field name,
+         * while `value` is a Vue display expression that must never reach the @select.
+         */
         columnToExportSelectFragments(column) {
-            const raw = (column.value !== undefined && column.value !== null && String(column.value).trim() !== '')
+            const exportField = (column.exportField !== undefined && column.exportField !== null && String(column.exportField).trim() !== '')
+                ? String(column.exportField).trim()
+                : '';
+
+            const raw = exportField || ((column.value !== undefined && column.value !== null && String(column.value).trim() !== '')
                 ? String(column.value).trim()
-                : String(column.slug || '').trim();
+                : String(column.slug || '').trim());
 
             if (!raw) {
                 return [];
             }
 
-            if (this.type === 'registration') {
+            if (!exportField && this.type === 'registration') {
                 if (raw === 'attachments') {
                     return ['files'];
                 }
