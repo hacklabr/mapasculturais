@@ -7,6 +7,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [UNRELEASED]
 ### Correções
+- Corrige o layout das opções do campo "Tipo" na configuração de bônus de pontuação (avaliação técnica), que ficavam em linha única e estouravam a borda do card; as opções passam a quebrar linha dentro do card Ref.: #97
 - Corrige a exportação da planilha de inscrições: a coluna "Critérios de desempate" saía com cabeçalho mas vazia em todas as linhas; passa a trazer o mesmo texto da tabela de inscrições ("critério: valor"), um critério por linha, com o valor do critério de data de envio formatado como data legível
 
 ### Melhorias
