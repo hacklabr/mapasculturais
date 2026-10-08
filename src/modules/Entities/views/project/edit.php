@@ -5,6 +5,7 @@ use MapasCulturais\i;
 $this->layout = 'entity';
 
 $this->import('
+    country-address-form
     confirm-before-exit
     entity-actions
     entity-admins
@@ -116,6 +117,24 @@ $owner_count = $entity->owner ? 1 : 0;
                                         <entity-field :entity="entity" classes="col-6 sm:col-12" prop="emailPublico" label="<?php i::_e('E-mail público') ?>"></entity-field>
                                         <entity-field :entity="entity" classes="col-6 sm:col-12" prop="telefonePublico" label="<?php i::_e('Telefone público (com DDD)') ?>"></entity-field>
                                     </div>
+                                </template>
+                            </mc-collapsible>
+                        </div>
+
+                        <div class="edit-1__section">
+                            <mc-collapsible :open="true">
+                                <template #header>
+                                    <div class="edit-1__section-heading">
+                                        <h3 class="edit-1__section-title"><?php i::_e('Dados de endereço') ?></h3>
+                                        <p class="edit-1__section-subtitle"><?php i::_e('Os dados inseridos abaixo serão exibidos para todos os usuários da plataforma.') ?></p>
+                                    </div>
+                                </template>
+                                <template #body>
+                                    <?php $this->applyTemplateHook('mc-card-content-address', 'begin') ?>
+                                    <div class="grid-12">
+                                        <country-address-form :entity="entity" class="col-12"></country-address-form>
+                                    </div>
+                                    <?php $this->applyTemplateHook('mc-card-content-address', 'end') ?>
                                 </template>
                             </mc-collapsible>
                         </div>
