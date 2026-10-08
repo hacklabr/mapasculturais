@@ -56,7 +56,7 @@
 ## J6 — Publicação de agente/espaço/evento no catálogo (incl. evento recorrente em espaço alheio)
 
 1. **Cria a entidade** — atalhos `edicao-de-*` (`config/routes.php:28-35`) como rascunho (status 0).
-2. **Preenche** — metadados/taxonomias/arquivos (galeria/avatar por file groups).
+2. **Preenche** — metadados/taxonomias/arquivos (galeria/avatar por file groups); projetos incluem **endereço opcional** (mesmo formulário de agente/espaço — R04/RF-B6 do [prd.md](prd.md)).
 3. **Ativa (publica)** — status 1 → aparece na busca (`/agentes`, `/espacos`, `/eventos`); histórico em `/historico`.
 
 ### J6a — Criação de evento recorrente (r7)
@@ -81,7 +81,7 @@
 ## J8 — Montagem do edital (do gestor)
 
 1. **Cria a oportunidade** — `GET_create` / `POST_index` (`Controllers/Opportunity.php:88-135`).
-2. **Edita** — `/gestao-de-oportunidade/{id}` (`opportunity/edit`) e `/configuracao-de-formulario/{id}` (`formBuilder`, :1885 — sob BaseV2, embutido via ponte iframe `v1-embed-tool`).
+2. **Edita** — `/gestao-de-oportunidade/{id}` (`opportunity/edit`; inclui **endereço opcional** da oportunidade, mesmo formulário de agente/espaço — R04/RF-B6 do [prd.md](prd.md)) e `/configuracao-de-formulario/{id}` (`formBuilder`, :1885 — sob BaseV2, embutido via ponte iframe `v1-embed-tool`).
 3. **Configura fases** (coleta/avaliação/recurso/execução/monitoramento), **comissões + distribuição** (grupos nomeados, `@tiebreaker`, `maxRegistrations`, listas), **método de avaliação** (critérios/cotas/bônus/desempate), **selos** (3 camadas), **suporte**.
 4. **Importa campos** de editais anteriores (`POST_importFields` :1792 / `GET_exportFields` :1685; job `ImportFields`).
 5. **Duplica a oportunidade** (trait `EntityOpportunityDuplicator`).
