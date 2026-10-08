@@ -15,7 +15,7 @@ Quem cadastra e edita projetos e oportunidades (gestores e proponentes) passa a 
 ## Restrições
 
 - Reutilizar o formulário `country-address-form` existente, sem criar formulário novo (brasileiro via `brasil-address-form`, internacional via `international-address-form`).
-- O formulário entra **na mesma seção** das telas de edição e de visualização pública, no lugar relativo equivalente ao de Agente/Espaço; exibição pública com `entity-location`.
+- O formulário entra **na mesma seção** das telas de edição e de visualização pública, no lugar relativo equivalente ao de Agente/Espaço; exibição pública seguindo o padrão vivo das singles BaseV2 (corrigido — ver adendo 2026-10-08).
 - Nada de endereço próprio em Evento — evento continua usando o endereço do espaço.
 
 ## Fora de escopo da R04 (explícito)
@@ -34,3 +34,7 @@ Quem cadastra e edita projetos e oportunidades (gestores e proponentes) passa a 
 ## Decisões tomadas na descoberta (valem para a próxima rodada)
 
 Registradas na épica #99 (comentário de 2026-10-08): recorte da R04 (só endereço), unificação da variável antiga de Eventos, filtros valendo para lista **e** mapa.
+
+## Adendo (2026-10-08)
+
+Correção da referência de exibição pública: o componente `entity-location` **não é usado em nenhuma view** (componente morto). A exibição pública do endereço em Projeto/Oportunidade segue o **padrão vivo das singles BaseV2** — o bloco de endereço das singles (ver `src/modules/Entities/views/space/single.php`) ou o componente `country-address-view`. O item de Restrições que citava `entity-location` fica corrigido por este adendo. Origem: avaliação de viabilidade da épica #99 (issue #102).
