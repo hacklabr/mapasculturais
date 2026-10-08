@@ -8,6 +8,7 @@ use MapasCulturais\i;
 
 $this->import('
     confirm-before-exit
+    country-address-form
     entity-admins
     entity-cover
     entity-field
@@ -61,6 +62,24 @@ $this->import('
                                 <entity-field :entity="entity" classes="col-12" prop="shortDescription" :max-length="400"></entity-field>
                                 <entity-field :entity="entity" classes="col-12" prop="longDescription"></entity-field>
                             </div>
+                        </template>
+                    </mc-collapsible>
+                </div>
+
+                <div class="edit-1__section">
+                    <mc-collapsible :open="true">
+                        <template #header>
+                            <div class="edit-1__section-heading">
+                                <h3 class="edit-1__section-title"><?php i::_e('Dados de endereço') ?></h3>
+                                <p class="edit-1__section-subtitle"><?php i::_e('Os dados inseridos abaixo serão exibidos para todos os usuários da plataforma.') ?></p>
+                            </div>
+                        </template>
+                        <template #body>
+                            <?php $this->applyTemplateHook('mc-card-content-address', 'begin') ?>
+                            <div class="grid-12">
+                                <country-address-form :entity="entity" class="col-12"></country-address-form>
+                            </div>
+                            <?php $this->applyTemplateHook('mc-card-content-address', 'end') ?>
                         </template>
                     </mc-collapsible>
                 </div>
