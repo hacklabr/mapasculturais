@@ -3582,4 +3582,27 @@ $$
         __exec("CREATE UNIQUE INDEX idx_registration_appeal_review_active_slot ON registration_appeal_review (original_evaluation_id) WHERE status IN (0, 1, 3);");
     },
 
+    // RF-B6 / ADR 0018 (épica #99, issue #104): endereço em Projeto e Oportunidade.
+    // Colunas geo espelham agent/space: DDL nullable (como no dump de agent/space),
+    // anotação Doctrine nullable=false, backfill (0,0)/false nas linhas existentes.
+    // Um único ALTER TABLE opportunity cobre todas as fases (single-table inheritance).
+    'add address location columns to project and opportunity' => function () use ($conn) {
+        foreach (['project', 'opportunity'] as $table) {
+            if (!__column_exists($table, 'location')) {
+                __exec("ALTER TABLE $table ADD COLUMN location point");
+                __exec("COMMENT ON COLUMN $table.location IS 'type=POINT'");
+            }
+            if (!__column_exists($table, '_geo_location')) {
+                __exec("ALTER TABLE $table ADD COLUMN _geo_location geography");
+            }
+            if (!__column_exists($table, 'public_location')) {
+                __exec("ALTER TABLE $table ADD COLUMN public_location boolean");
+            }
+
+            __exec("UPDATE $table SET location = '(0,0)'::point WHERE location IS NULL");
+            __exec("UPDATE $table SET _geo_location = ST_GeogFromText('SRID=4326;POINT(0 0)') WHERE _geo_location IS NULL");
+            __exec("UPDATE $table SET public_location = false WHERE public_location IS NULL");
+        }
+    },
+
 ] + $updates ;

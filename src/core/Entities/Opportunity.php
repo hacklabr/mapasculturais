@@ -78,6 +78,7 @@ abstract class Opportunity extends \MapasCulturais\Entity
         Traits\EntityFiles,
         Traits\EntityAvatar,
         Traits\EntityMetaLists,
+        Traits\EntityGeoLocation,
         Traits\EntityTaxonomies,
         Traits\EntityRevision,
         Traits\EntityAgentRelation,
@@ -126,6 +127,27 @@ abstract class Opportunity extends \MapasCulturais\Entity
      * @ORM\Column(name="name", type="string", length=255, nullable=false)
      */
     protected $name;
+
+    /**
+     * @var bool
+     *
+     * @ORM\Column(name="public_location", type="boolean", nullable=true)
+     */
+    public $publicLocation = false;
+
+    /**
+     * @var \MapasCulturais\Types\GeoPoint
+     *
+     * @ORM\Column(name="location", type="point", nullable=false)
+     */
+    protected $location;
+
+    /**
+     * @var geography
+     *
+     * @ORM\Column(name="_geo_location", type="geography", nullable=false)
+     */
+    protected $_geoLocation;
 
     /**
      * @var string
@@ -581,6 +603,14 @@ abstract class Opportunity extends \MapasCulturais\Entity
 
     function getEvents(){
         return $this->fetchByStatus($this->_events, self::STATUS_ENABLED);
+    }
+
+    function getLocation(){
+        if($this->publicLocation || $this->canUser('viewPrivateData')){
+            return $this->location;
+        }else{
+            return new \MapasCulturais\Types\GeoPoint(0,0);
+        }
     }
 
     function getAllRegistrations($status = null){
