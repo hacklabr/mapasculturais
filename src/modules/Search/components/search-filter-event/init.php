@@ -6,10 +6,10 @@
 
 $seals_filter_enabled = $app->config['events.filter.seals'] ?? false;
 
-// O dataset de estados/cidades agora é publicado pelo componente <search> (ADR 0019);
-// a variável antiga events.filter.statesAndCities não tem mais efeito (#118/#121
-// removem o uso remanescente desta flag no script/template deste filtro).
-$states_cities_filter_enabled = false;
+// O recorte territorial das buscas é controlado pelo componente <search>
+// (ADR 0019): flags unificadas $MAPAS.config.statesAndCitiesEnable e
+// $MAPAS.config.searchTerritorialFilters, publicadas em search/init.php.
+// A variável antiga events.filter.statesAndCities não tem mais efeito (#118).
 
 $seals = [];
 if ($seals_filter_enabled) {
@@ -21,7 +21,6 @@ if ($seals_filter_enabled) {
 }
 
 $this->jsObject['config']['searchFilterEvent'] = [
-    'statesAndCitiesFilterEnabled' => $states_cities_filter_enabled,
-    'sealsFilterEnabled'           => $seals_filter_enabled,
-    'seals'                        => $seals,
+    'sealsFilterEnabled' => $seals_filter_enabled,
+    'seals'              => $seals,
 ];

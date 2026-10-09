@@ -165,8 +165,8 @@ app.component('search-filter-event', {
             presetRanges: presetRanges,
             ageRating: $DESCRIPTIONS.event.classificacaoEtaria.optionsOrder,
             sealsFilterEnabled: filterConfig.sealsFilterEnabled ?? false,
-            statesAndCitiesFilterEnabled: filterConfig.statesAndCitiesFilterEnabled ?? false,
-            hasStatesAndCities: !!$MAPAS.config.statesAndCities,
+            statesAndCitiesEnable: !!$MAPAS.config.statesAndCitiesEnable,
+            searchTerritorialFilters: $MAPAS.config.searchTerritorialFilters || { statesForced: [], citiesForced: [], showStateFilter: true, showCityFilter: true },
             seals: (filterConfig.seals || []).map(s => ({ value: String(s.id), label: s.name })),
             sealsLabels: Object.fromEntries((filterConfig.seals || []).map(s => [String(s.id), s.name])),
         }
