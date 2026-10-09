@@ -446,6 +446,8 @@ Uma query = array associativo `{chave: expressão}`. Chaves `@`-led são diretiv
 | `GEOBOUNDING(POINT(l1:a1),POINT(l2:a2))` | `st_covers(st_envelope(st_geomfromtext(LINESTRING(...))), k)` |
 | `OR(e1,e2)` / `AND(e1,e2)` | aninhamento recursivo (:3458-3467) |
 
+**Colunas geo por entidade:** `location` (point) + `_geo_location` (geography) + `public_location` existem em Agent, Space e Subsite; desde a R04 também em Project e Opportunity (ADR `decisions/0018`) — habilita `GEONEAR`/`GEOBOUNDING` e o filtro de mapa `location = !EQ([0,0])` para essas entidades; entidades sem endereço carregam `(0,0)` e ficam fora do mapa.
+
 **Valores mágicos** (:3402-3432): `@me`, `@me.{prop}`, `@profile`, `@{entidade}:{id}`, `POINT(lng:lat)`; qualquer outro `@...` → null.
 
 **Metadados**: filtro exige chave **registrada** (senão `PropertyDoesNotExists`); join automático `LEFT JOIN e.__metadata {alias} WITH {alias}.key = '{key}'` (:3936-3965); tipo `multiselect|array|json` converte `IN`→`JSON_IN` automaticamente (:3948-3955).
