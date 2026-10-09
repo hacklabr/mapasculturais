@@ -4,20 +4,12 @@
  * @var MapasCulturais\Themes\BaseV2\Theme $this
  */
 
-$states_cities_filter_enabled = $app->config['events.filter.statesAndCities'] ?? false;
 $seals_filter_enabled = $app->config['events.filter.seals'] ?? false;
 
-// Carrega os dados de estado/cidade quando o filtro está habilitado e estamos numa instalação BR
-if ($states_cities_filter_enabled && ($app->config['statesAndCities.enable'] ?? false)) {
-    if (empty($app->view->jsObject['config']['statesAndCities'])) {
-        $file_name = $app->config['statesAndCities.file'];
-        $content = $this->resolveFilename('states-and-cities', $file_name);
-        include $content;
-        $app->view->jsObject['config']['statesAndCities'] = $data;
-        $app->view->jsObject['config']['statesAndCitiesEnable'] = true;
-        $app->view->jsObject['config']['statesAndCitiesCountryCode'] = $app->config['statesAndCities.countryCode'];
-    }
-}
+// O dataset de estados/cidades agora é publicado pelo componente <search> (ADR 0019);
+// a variável antiga events.filter.statesAndCities não tem mais efeito (#118/#121
+// removem o uso remanescente desta flag no script/template deste filtro).
+$states_cities_filter_enabled = false;
 
 $seals = [];
 if ($seals_filter_enabled) {
