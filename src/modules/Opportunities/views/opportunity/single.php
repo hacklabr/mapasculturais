@@ -191,8 +191,8 @@ $owner_count = $entity->owner ? 1 : 0;
                         </mc-card>
                     </div>
 
-                    <p
-                        v-if="!entity.publicLocation || !(
+                    <div
+                        v-if="entity.publicLocation && (
                             entity.En_CEP ||
                             entity.En_Nome_Logradouro ||
                             entity.En_Num ||
@@ -203,11 +203,7 @@ $owner_count = $entity->owner ? 1 : 0;
                             entity.address_line1 ||
                             ((entity.location?.lat ?? entity.location?.latitude) && (entity.location?.lng ?? entity.location?.longitude))
                         )"
-                        class="single-1__address-empty">
-                        <?php i::_e('Essa oportunidade não compartilhou dados de endereço.'); ?>
-                    </p>
-
-                    <div v-else class="single-1__address-card">
+                        class="single-1__address-card">
                         <div class="single-1__address-header">
                             <h2 class="single-1__address-title"><?php i::_e('Dados do endereço'); ?></h2>
                             <a
