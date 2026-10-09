@@ -87,6 +87,12 @@
 5. **Duplica a oportunidade** (trait `EntityOpportunityDuplicator`).
 6. **Datas viram jobs** — salvar agenda `StartDataCollectionPhase`/`FinishDataCollectionPhase`/`StartEvaluationPhase`/`FinishEvaluationPhase`/`PublishResult` conforme as datas (`Opportunities/Module.php:538-608`).
 
+## J9 — Busca no catálogo público (visitante)
+
+1. **Abre uma busca** — `/agentes`, `/espacos`, `/eventos`, `/projetos`, `/oportunidades` (módulo Search; um `search-filter-*` por entidade).
+2. **Filtra** — palavra-chave, taxonomias e, desde a R05 (RF-B7 do [prd.md](prd.md)), **Estado e Município** com comportamento unificado nas cinco buscas — em eventos, pelo endereço do espaço. Vale para a lista sempre, e para o mapa onde ele existe (agentes, espaços, eventos).
+3. **Recorte da instalação** — com `SEARCH_FILTER_STATES`/`SEARCH_FILTER_CITIES` configuradas, os resultados já vêm restritos à região e os filtros correspondentes não aparecem (matriz no RF-B7).
+
 ---
 
 ---
