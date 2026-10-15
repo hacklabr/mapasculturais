@@ -10,6 +10,7 @@ use MapasCulturais\Entities\OpportunityAgentRelation;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
+use OpportunityAppealPhase\AppealReview\CorrectorEnvironment;
 use OpportunityAppealPhase\AppealReview\Notifier;
 use OpportunityAppealPhase\AppealReview\Service;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
@@ -182,6 +183,7 @@ class AppealCorrectionNotificationsTest extends TestCase
         $last = App::i()->repo(Notification::class)->findOneBy(['user' => $scenario['corrector']], ['id' => 'DESC']);
         $this->assertStringContainsString('designado', $last->message);
         $this->assertStringContainsString($scenario['registration']->number, $last->message);
+        $this->assertStringContainsString(CorrectorEnvironment::correctionUrl($review), $last->message);
         $this->assertNotNull($review->id);
     }
 
@@ -190,7 +192,7 @@ class AppealCorrectionNotificationsTest extends TestCase
         $scenario = $this->createScenario();
         TestTransport::reset();
 
-        $this->createReview($scenario);
+        $review = $this->createReview($scenario);
 
         $this->assertGreaterThan(0, TestTransport::getMessagesCount(), 'Deveria disparar e-mail na designação');
 
@@ -204,6 +206,7 @@ class AppealCorrectionNotificationsTest extends TestCase
                 if ($address->getAddress() === $scenario['corrector']->email) {
                     $this->assertStringContainsString('designado', $original->getSubject());
                     $this->assertStringContainsString($scenario['registration']->number, (string) $original->getHtmlBody());
+                    $this->assertStringContainsString(CorrectorEnvironment::correctionUrl($review), (string) $original->getHtmlBody());
                     $found = true;
                 }
             }

@@ -44,7 +44,14 @@ class Notifier
             $deadline
         );
 
-        self::sendNotification($corrector, $message);
+        $notification_message = sprintf(
+            '%s <a href="%s">%s</a>',
+            $message,
+            CorrectorEnvironment::correctionUrl($review),
+            i::__('Acessar correção')
+        );
+
+        self::sendNotification($corrector, $notification_message);
         self::sendEmail($corrector, $review, true, $message);
     }
 
@@ -192,6 +199,7 @@ class Notifier
             'phaseUrl' => $appeal_phase ? $appeal_phase->singleUrl : null,
             'registrationNumber' => $registration->number,
             'registrationUrl' => $registration->singleUrl,
+            'correctionUrl' => CorrectorEnvironment::correctionUrl($review),
             'deadline' => $review->endsAt ? $review->endsAt->format('d/m/Y H:i') : null,
         ];
 
