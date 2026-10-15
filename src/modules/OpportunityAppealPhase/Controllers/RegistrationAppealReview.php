@@ -10,6 +10,7 @@ use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
 use MapasCulturais\i;
 use MapasCulturais\Traits;
+use OpportunityAppealPhase\AppealReview\Notifier;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
 
 /**
@@ -23,6 +24,7 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
  * - PUT    /registrationappealreview/single/{id}               → PUT_single (substituir corretor/prazo)
  * - PATCH  /registrationappealreview/single/{id}               → PATCH_single
  * - DELETE /registrationappealreview/single/{id}               → DELETE_single (cancelar designação)
+ * - POST   /registrationappealreview/reopen/{id}               → POST_reopen (reabrir correção enviada)
  *
  * Segurança: a entidade não usa owner nem permission cache, então o pseudo-owner
  * das checagens genéricas é o próprio usuário logado e as ações canônicas herdadas
@@ -228,15 +230,75 @@ class RegistrationAppealReview extends EntityController
     /**
      * Cancelamento de designação: restrito a gestores com `@control`
      * (a entidade usa hard delete — sem mudança de status).
+     *
+     * Designação que já teve envio aplicou a correção no slot e guarda a nota
+     * original (originalValue/originalScore): não pode ser apagada.
      */
     function DELETE_single()
     {
         $this->requireAuthentication();
         $this->assertFeatureEnabled();
 
-        $this->getRequestedReview()->registration->opportunity->checkPermission('@control');
+        $review = $this->getRequestedReview();
+        $review->registration->opportunity->checkPermission('@control');
+
+        if ($review->sentTimestamp) {
+            $this->errorJson(i::__('Esta correção já foi aplicada e não pode ser cancelada: o registro guarda a nota original do avaliador.'), 400);
+        }
 
         parent::DELETE_single();
+    }
+
+    /**
+     * Reabre uma designação ENVIADA para o mesmo corretor revisar a correção
+     * do slot (POST /registrationappealreview/reopen/{id}).
+     *
+     * A correção aplicada continua vigente até o novo envio; `sentTimestamp`
+     * é mantido como marca de correção já aplicada (colunas de nota original
+     * e bloqueio de cancelamento dependem dele). `endsAt` opcional redefine o
+     * prazo (null remove); com prazo vencido e sem novo prazo a reabertura é
+     * rejeitada.
+     */
+    function POST_reopen()
+    {
+        $this->requireAuthentication();
+        $this->assertFeatureEnabled();
+
+        $app = App::i();
+
+        $review = $this->getRequestedReview();
+        $review->registration->opportunity->checkPermission('@control');
+
+        if ((int) $review->status !== ReviewEntity::STATUS_SENT) {
+            $this->errorJson(i::__('Somente correções enviadas podem ser reabertas.'), 400);
+        }
+
+        $other_active = $app->repo(ReviewEntity::class)->findBy([
+            'originalEvaluation' => $review->originalEvaluation->id,
+            'status' => ReviewEntity::getActiveStatuses(),
+        ]);
+
+        if ($other_active) {
+            $this->errorJson(i::__('Já existe uma designação ativa para este slot. Conclua ou cancele essa designação antes de reabrir a correção enviada.'), 400);
+        }
+
+        $data = is_array($this->postData) ? $this->postData : [];
+
+        // endsAt ausente mantém o prazo atual; null/'' remove o prazo.
+        if (array_key_exists('endsAt', $data)) {
+            $review->endsAt = $this->parseDateParam($data['endsAt']);
+        }
+
+        if ($review->endsAt && $review->endsAt < new DateTime()) {
+            $this->errorJson(i::__('O prazo desta designação já terminou. Informe um novo prazo futuro ou reabra sem prazo.'), 400);
+        }
+
+        $review->status = ReviewEntity::STATUS_REOPENED;
+        $review->save(true);
+
+        Notifier::notifyReopened($review);
+
+        $this->json($review);
     }
 
     // ============================================================ //

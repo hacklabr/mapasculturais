@@ -733,8 +733,8 @@ class Module extends \MapasCulturais\Module {
         $app = App::i();
         $ids = implode(',', array_map('intval', $evaluation_ids));
 
-        // r.status = 2 = RegistrationAppealReview::STATUS_SENT (correção aplicada);
-        // menor id = primeira correção do slot.
+        // sent_timestamp preenchido = correção aplicada (inclui designação
+        // reaberta após envio); menor id = primeira correção do slot.
         $rows = $app->em->getConnection()->fetchAllAssociative("
             SELECT
                 ev.id,
@@ -742,7 +742,7 @@ class Module extends \MapasCulturais\Module {
                 (
                     SELECT r.original_score
                     FROM registration_appeal_review r
-                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
                 ) AS original_score
@@ -784,7 +784,7 @@ class Module extends \MapasCulturais\Module {
                 (
                     SELECT r.original_score
                     FROM registration_appeal_review r
-                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
                 ) AS original

@@ -55,6 +55,51 @@ class Notifier
         self::sendEmail($corrector, $review, true, $message);
     }
 
+    /**
+     * Reabertura pelo gestor: corretor é avisado de que pode revisar e
+     * reenviar a correção (mesmo template de e-mail da designação).
+     */
+    public static function notifyReopened(RegistrationAppealReview $review): void
+    {
+        if (!self::isScoreCorrectionEnabled()) {
+            return;
+        }
+
+        $corrector = $review->correctorUser;
+        if (!$corrector) {
+            return;
+        }
+
+        $registration = $review->registration;
+        $opportunity = $registration->opportunity;
+        $deadline = $review->endsAt
+            ? $review->endsAt->format('d/m/Y H:i')
+            : i::__('sem prazo definido');
+
+        $message = sprintf(
+            i::__('A correção da avaliação da inscrição %s em %s foi reaberta pela gestão. Revise e envie novamente. Prazo para correção: %s.'),
+            $registration->number,
+            $opportunity->name,
+            $deadline
+        );
+
+        $notification_message = sprintf(
+            '%s <a href="%s">%s</a>',
+            $message,
+            CorrectorEnvironment::correctionUrl($review),
+            i::__('Acessar correção')
+        );
+
+        self::sendNotification($corrector, $notification_message);
+        self::sendEmail(
+            $corrector,
+            $review,
+            true,
+            $message,
+            sprintf(i::__('Correção de avaliação reaberta em %s'), $opportunity->name)
+        );
+    }
+
     public static function notifyCorrectionSent(RegistrationAppealReview $review): void
     {
         if (!self::isScoreCorrectionEnabled()) {
@@ -162,7 +207,7 @@ class Notifier
         $notification->save(true);
     }
 
-    private static function sendEmail($user, RegistrationAppealReview $review, bool $is_designation, string $message): void
+    private static function sendEmail($user, RegistrationAppealReview $review, bool $is_designation, string $message, ?string $subject = null): void
     {
         if (!self::isMailEnabled()) {
             return;
@@ -184,9 +229,9 @@ class Notifier
         $original_opportunity = $registration->opportunity;
         $appeal_phase = $review->appealPhase;
 
-        $subject = $is_designation
+        $subject = $subject ?? ($is_designation
             ? sprintf(i::__('Você foi designado(a) corretor(a) em %s'), $original_opportunity->name)
-            : sprintf(i::__('Correção de avaliação enviada em %s'), $original_opportunity->name);
+            : sprintf(i::__('Correção de avaliação enviada em %s'), $original_opportunity->name));
 
         $params = [
             'siteName' => $app->siteName,
