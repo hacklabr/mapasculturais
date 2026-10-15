@@ -148,6 +148,9 @@ $this->import('
                             <p class="message">
                                 <?= i::__("Atenção: se o resultado final já estiver publicado, ele será <strong>publicado novamente</strong> e os selos serão <strong>reaplicados</strong>, sobrescrevendo ajustes de selos feitos manualmente após a publicação.")?>
                             </p>
+                            <mc-alert v-if="appealPhaseUnpublished" type="warning">
+                                <?= i::__("<strong>O resultado da fase de recurso ainda não foi publicado.</strong> Ao publicar o resultado final, as notas alteradas por correções de recurso ficarão visíveis ao proponente, mas a resposta do recurso (deferimento e parecer) continuará oculta até que o resultado seja publicado na seção \"Resposta do recurso\".")?>
+                            </mc-alert>
                         </template>
                     </mc-confirm-button>
                 </div>

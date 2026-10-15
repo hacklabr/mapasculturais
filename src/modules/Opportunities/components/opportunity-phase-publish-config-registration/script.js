@@ -113,6 +113,14 @@ app.component('opportunity-phase-publish-config-registration' , {
         isAppealInstance() {
             return !this.showFinalPublishButton;
         },
+        appealPhaseUnpublished() {
+            if (this.isAppealInstance) {
+                return false;
+            }
+
+            const appealPhase = this.phase?.appealPhase ?? this.phase?.evaluationMethodConfiguration?.appealPhase;
+            return !!appealPhase?.id && !appealPhase.publishedRegistrations;
+        },
     },
 
     methods: {
