@@ -222,6 +222,41 @@
     margin-top: .25rem;
 }
 
+.opportunity-appeal-correction-assignment__deadline {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    margin-top: .5rem;
+}
+
+.opportunity-appeal-correction-assignment__deadline label {
+    font-size: .75rem;
+}
+
+.opportunity-appeal-correction-assignment__deadline .mc-datepicker {
+    flex-direction: column;
+    gap: .5rem;
+    min-width: 0;
+}
+
+.opportunity-appeal-correction-assignment__deadline .mc-datepicker__date,
+.opportunity-appeal-correction-assignment__deadline .mc-datepicker__time {
+    width: 100%;
+}
+
+.opportunity-appeal-correction-assignment__deadline .mc-datepicker input {
+    box-sizing: border-box;
+    min-width: 0;
+    width: 100%;
+}
+
+.opportunity-appeal-correction-assignment__deadline .opportunity-appeal-correction-assignment__slot-hint {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
 .opportunity-appeal-correction-assignment__scope-list {
     background-color: var(--mc-gray-100);
     border: 1px solid var(--mc-gray-300);
