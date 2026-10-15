@@ -216,13 +216,16 @@ class AppealAssignmentApiTest extends TestCase
         $scenario = $this->createScenario();
         $this->login($scenario['admin']);
 
+        $starts_at = (new DateTime('+1 day'))->format('Y-m-d') . ' 09:00';
+        $ends_at = (new DateTime('+10 days'))->format('Y-m-d') . ' 18:00';
+
         $response = $this->postAssignment([
             'originalEvaluation' => $scenario['slotA']->id,
             'correctorUser' => $scenario['committeeUser']->id,
             'correctionType' => RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL,
             'releasedScope' => json_encode(['criteria' => ['c-1'], 'showAppealOpinion' => true]),
-            'startsAt' => '2026-09-01 09:00',
-            'endsAt' => '2026-09-10 18:00',
+            'startsAt' => $starts_at,
+            'endsAt' => $ends_at,
         ]);
 
         $this->assertEquals(200, $response['status'], 'Gestor com @control deve criar designação: ' . json_encode($response['json']));
@@ -237,8 +240,8 @@ class AppealAssignmentApiTest extends TestCase
         $this->assertEquals($scenario['committeeUser']->id, $review->correctorUser->id);
         $this->assertEquals(RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL, $review->correctionType);
         $this->assertEquals(['criteria' => ['c-1'], 'showAppealOpinion' => true], (array) $review->releasedScope);
-        $this->assertEquals('2026-09-01 09:00:00', $review->startsAt->format('Y-m-d H:i:s'));
-        $this->assertEquals('2026-09-10 18:00:00', $review->endsAt->format('Y-m-d H:i:s'));
+        $this->assertEquals($starts_at . ':00', $review->startsAt->format('Y-m-d H:i:s'));
+        $this->assertEquals($ends_at . ':00', $review->endsAt->format('Y-m-d H:i:s'));
 
         // Campos derivados do slot no servidor
         $this->assertEquals($scenario['registration']->id, $review->registration->id);
@@ -246,6 +249,66 @@ class AppealAssignmentApiTest extends TestCase
         $this->assertEquals($scenario['slotOwnerA']->id, $review->slotOwnerUser->id);
         $this->assertEquals(RegistrationAppealReview::STATUS_DESIGNATED, $review->status);
         $this->assertNull($review->sentTimestamp, 'Designação recém-criada não tem envio.');
+    }
+
+    function testDesignationWithPastDeadlineRejected(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $response = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'endsAt' => (new DateTime('-1 hour'))->format('Y-m-d H:i'),
+        ]);
+
+        $this->assertEquals(400, $response['status'], 'Prazo final no passado deixaria o corretor sem acesso desde a criação.');
+        $this->assertStringContainsStringIgnoringCase('passado', (string) $response['json']['data']);
+        $this->assertEquals(0, $this->countActiveReviewsForSlot($scenario['slotA']));
+    }
+
+    function testDesignationWithStartAfterDeadlineRejected(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $response = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'startsAt' => (new DateTime('+5 days'))->format('Y-m-d H:i'),
+            'endsAt' => (new DateTime('+2 days'))->format('Y-m-d H:i'),
+        ]);
+
+        $this->assertEquals(400, $response['status'], 'Início posterior ao prazo final é uma janela vazia.');
+        $this->assertEquals(0, $this->countActiveReviewsForSlot($scenario['slotA']));
+    }
+
+    function testPatchDeadlineValidatesWindow(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+
+        $past = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], [
+                'endsAt' => (new DateTime('-1 day'))->format('Y-m-d H:i'),
+            ])
+        );
+        $this->assertEquals(400, $past['status'], 'Alterar prazo para o passado deve ser rejeitado.');
+
+        $new_deadline = (new DateTime('+4 days'))->format('Y-m-d H:i');
+        $future = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], [
+                'endsAt' => $new_deadline,
+            ])
+        );
+        $this->assertEquals(200, $future['status'], 'Novo prazo futuro deve ser aceito: ' . json_encode($future['json']));
+        $this->assertEquals($new_deadline, $this->findReview($review_id)->endsAt->format('Y-m-d H:i'));
     }
 
     function testSlotOwnerIsEligibleCorrector(): void
@@ -375,8 +438,8 @@ class AppealAssignmentApiTest extends TestCase
         $review_a = $this->postAssignment([
             'originalEvaluation' => $scenario['slotA']->id,
             'correctorUser' => $scenario['committeeUser']->id,
-            'startsAt' => '2026-09-01 09:00',
-            'endsAt' => '2026-09-10 18:00',
+            'startsAt' => (new DateTime('+1 day'))->format('Y-m-d') . ' 09:00',
+            'endsAt' => (new DateTime('+10 days'))->format('Y-m-d') . ' 18:00',
         ]);
         $this->assertEquals(200, $review_a['status']);
 
@@ -494,5 +557,304 @@ class AppealAssignmentApiTest extends TestCase
 
         $this->assertEquals(403, $deleted['status'], 'Exclusão de designação exige @control na oportunidade.');
         $this->assertNotNull(App::i()->repo(RegistrationAppealReview::class)->find($review_id), 'Designação não pode ser removida por não-gestor.');
+    }
+
+    /**
+     * Simula o envio definitivo da correção (status SENT + sentTimestamp).
+     */
+    private function markSent(int $review_id, ?DateTime $ends_at = null): void
+    {
+        $app = App::i();
+        /** @var RegistrationAppealReview $review */
+        $review = $app->repo(RegistrationAppealReview::class)->find($review_id);
+
+        $app->disableAccessControl();
+        $review->status = RegistrationAppealReview::STATUS_SENT;
+        $review->sentTimestamp = new DateTime('-1 hour');
+        if ($ends_at) {
+            $review->endsAt = $ends_at;
+        }
+        $review->save(true);
+        $app->enableAccessControl();
+    }
+
+    /**
+     * @return array{status: int, json: mixed}
+     */
+    private function reopen(int $review_id, array $payload = []): array
+    {
+        return $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'reopen', [$review_id], $payload)
+        );
+    }
+
+    private function findReview(int $review_id): ?RegistrationAppealReview
+    {
+        $app = App::i();
+        $review = $app->repo(RegistrationAppealReview::class)->find($review_id);
+
+        if ($review) {
+            $app->em->refresh($review);
+        }
+
+        return $review;
+    }
+
+    function testManagerReopensOnlyTheTargetSentSlot(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $review_a = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_b = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotB']->id,
+            'correctorUser' => $scenario['slotOwnerB']->id,
+        ]);
+        $this->assertEquals(200, $review_a['status']);
+        $this->assertEquals(200, $review_b['status']);
+
+        $this->markSent($review_a['json']['id']);
+        $this->markSent($review_b['json']['id']);
+
+        $response = $this->reopen($review_a['json']['id']);
+        $this->assertEquals(200, $response['status'], 'Gestor deve reabrir a correção enviada do slot: ' . json_encode($response['json']));
+
+        $reopened = $this->findReview($review_a['json']['id']);
+        $this->assertEquals(RegistrationAppealReview::STATUS_REOPENED, $reopened->status, 'Slot escolhido volta a ficar editável.');
+        $this->assertNotNull($reopened->sentTimestamp, 'Data do último envio é mantida como marca de correção já aplicada.');
+
+        $untouched = $this->findReview($review_b['json']['id']);
+        $this->assertEquals(RegistrationAppealReview::STATUS_SENT, $untouched->status, 'Os demais slots não podem ser reabertos junto.');
+
+        $notifications = App::i()->repo('Notification')->findBy(['user' => $scenario['committeeUser']->id]);
+        $messages = array_map(static fn ($notification) => (string) $notification->message, $notifications);
+        $this->assertNotEmpty(
+            array_filter($messages, static fn ($message) => str_contains($message, 'reaberta')),
+            'Corretor deve ser notificado da reabertura.'
+        );
+    }
+
+    function testReopenRejectsDesignationNotSent(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $created['status']);
+
+        $response = $this->reopen($created['json']['id']);
+
+        $this->assertEquals(400, $response['status'], 'Somente correção enviada pode ser reaberta.');
+        $this->assertEquals(RegistrationAppealReview::STATUS_DESIGNATED, $this->findReview($created['json']['id'])->status);
+    }
+
+    function testReopenForbiddenForNonManager(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->markSent($created['json']['id']);
+
+        $this->login($scenario['committeeUser']);
+        $response = $this->reopen($created['json']['id']);
+
+        $this->assertEquals(403, $response['status'], 'Reabertura exige @control na oportunidade (nem o corretor pode se reabrir).');
+        $this->assertEquals(RegistrationAppealReview::STATUS_SENT, $this->findReview($created['json']['id'])->status);
+    }
+
+    function testReopenRejectedWhenSlotHasAnotherActiveDesignation(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $sent = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->markSent($sent['json']['id']);
+
+        $active = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['slotOwnerA']->id,
+        ]);
+        $this->assertEquals(200, $active['status']);
+
+        $response = $this->reopen($sent['json']['id']);
+
+        $this->assertEquals(400, $response['status'], 'Reabrir criaria duas designações ativas no mesmo slot.');
+        $this->assertEquals(1, $this->countActiveReviewsForSlot($scenario['slotA']));
+    }
+
+    function testReopenWithExpiredDeadlineRequiresNewDeadline(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $this->markSent($review_id, new DateTime('-1 day'));
+
+        $without_deadline = $this->reopen($review_id);
+        $this->assertEquals(400, $without_deadline['status'], 'Prazo vencido sem novo prazo deixaria o corretor sem acesso.');
+        $this->assertEquals(RegistrationAppealReview::STATUS_SENT, $this->findReview($review_id)->status);
+
+        $new_deadline = (new DateTime('+3 days'))->format('Y-m-d H:i');
+        $with_deadline = $this->reopen($review_id, ['endsAt' => $new_deadline]);
+        $this->assertEquals(200, $with_deadline['status'], 'Novo prazo futuro permite reabrir: ' . json_encode($with_deadline['json']));
+
+        $reopened = $this->findReview($review_id);
+        $this->assertEquals(RegistrationAppealReview::STATUS_REOPENED, $reopened->status);
+        $this->assertEquals($new_deadline, $reopened->endsAt->format('Y-m-d H:i'));
+    }
+
+    function testReopenWithoutDeadlineClearsExpiredDeadline(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $this->markSent($review_id, new DateTime('-1 day'));
+
+        $response = $this->reopen($review_id, ['endsAt' => null]);
+        $this->assertEquals(200, $response['status'], 'endsAt nulo explícito reabre sem prazo: ' . json_encode($response['json']));
+
+        $reopened = $this->findReview($review_id);
+        $this->assertEquals(RegistrationAppealReview::STATUS_REOPENED, $reopened->status);
+        $this->assertNull($reopened->endsAt, 'Prazo vencido deve ser removido.');
+    }
+
+    function testReopenWithoutEndsAtKeepsCurrentDeadline(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $deadline = new DateTime('+5 days');
+        $this->markSent($review_id, $deadline);
+
+        $this->assertEquals(200, $this->reopen($review_id)['status']);
+        $this->assertEquals($deadline->format('Y-m-d H:i'), $this->findReview($review_id)->endsAt->format('Y-m-d H:i'), 'Sem endsAt no payload o prazo vigente é mantido.');
+    }
+
+    /**
+     * @return array{status: int, json: mixed}
+     */
+    private function changeDeadline(int $review_id, array $payload): array
+    {
+        return $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'deadline', [$review_id], $payload)
+        );
+    }
+
+    function testManagerChangesAndRemovesDeadlineOfActiveDesignation(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'endsAt' => (new DateTime('+2 days'))->format('Y-m-d H:i'),
+        ]);
+        $review_id = $created['json']['id'];
+
+        $new_deadline = (new DateTime('+7 days'))->format('Y-m-d H:i');
+        $changed = $this->changeDeadline($review_id, ['endsAt' => $new_deadline]);
+        $this->assertEquals(200, $changed['status'], 'Gestor altera o prazo da designação ativa: ' . json_encode($changed['json']));
+        $this->assertEquals($new_deadline, $this->findReview($review_id)->endsAt->format('Y-m-d H:i'));
+
+        $notifications = App::i()->repo('Notification')->findBy(['user' => $scenario['committeeUser']->id]);
+        $messages = array_map(static fn ($notification) => (string) $notification->message, $notifications);
+        $this->assertNotEmpty(
+            array_filter($messages, static fn ($message) => str_contains($message, 'prazo da correção')),
+            'Corretor deve ser notificado da mudança de prazo.'
+        );
+
+        $removed = $this->changeDeadline($review_id, ['endsAt' => null]);
+        $this->assertEquals(200, $removed['status']);
+        $this->assertNull($this->findReview($review_id)->endsAt, 'endsAt null remove o prazo.');
+    }
+
+    function testChangeDeadlineRejectsPastDateAndSentDesignation(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+
+        $past = $this->changeDeadline($review_id, ['endsAt' => (new DateTime('-1 day'))->format('Y-m-d H:i')]);
+        $this->assertEquals(400, $past['status'], 'Prazo no passado deve ser rejeitado.');
+        $this->assertNull($this->findReview($review_id)->endsAt);
+
+        $missing = $this->changeDeadline($review_id, []);
+        $this->assertEquals(400, $missing['status'], 'Sem endsAt no payload não há o que alterar.');
+
+        $this->markSent($review_id);
+        $sent = $this->changeDeadline($review_id, ['endsAt' => (new DateTime('+3 days'))->format('Y-m-d H:i')]);
+        $this->assertEquals(400, $sent['status'], 'Correção enviada não tem prazo editável (usar reabertura).');
+    }
+
+    function testChangeDeadlineForbiddenForNonManager(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+
+        $this->login($scenario['committeeUser']);
+        $response = $this->changeDeadline($review_id, ['endsAt' => (new DateTime('+30 days'))->format('Y-m-d H:i')]);
+
+        $this->assertEquals(403, $response['status'], 'Corretor não pode alterar o próprio prazo.');
+        $this->assertNull($this->findReview($review_id)->endsAt);
+    }
+
+    function testDeleteRejectedForAlreadySentCorrection(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $this->markSent($review_id);
+        $this->assertEquals(200, $this->reopen($review_id)['status']);
+
+        $deleted = $this->dispatch(
+            $this->requestFactory->DELETE('registrationappealreview', 'single', [$review_id])
+        );
+
+        $this->assertEquals(400, $deleted['status'], 'Correção já aplicada (mesmo reaberta) não pode ser apagada.');
+        $this->assertNotNull($this->findReview($review_id), 'Registro da nota original deve ser preservado.');
     }
 }
