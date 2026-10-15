@@ -120,6 +120,29 @@ class AppealTwoStagePublishTest extends TestCase
         $this->assertTrue($opportunity->areRegistrationResultsPublished());
     }
 
+    function testPreliminaryPublishExposesEvaluationDetails(): void
+    {
+        $this->enableTwoStagePublish();
+
+        ['opportunity' => $opportunity, 'registration' => $registration] = $this->createEvaluatedOpportunityScenario();
+
+        $evaluation_configuration = $opportunity->evaluationMethodConfiguration;
+        $evaluation_configuration->publishEvaluationDetails = true;
+        $evaluation_configuration->save(true);
+
+        $data = App::i()->repo('Registration')->find($registration->id)->jsonSerialize();
+        $this->assertArrayNotHasKey('consolidatedDetails', $data);
+
+        $opportunity->publishPreliminaryRegistrations();
+
+        $registration = App::i()->repo('Registration')->find($registration->id);
+        $this->assertFalse($registration->opportunity->publishedRegistrations);
+
+        $data = $registration->jsonSerialize();
+        $this->assertArrayHasKey('consolidatedDetails', $data);
+        $this->assertArrayHasKey('evaluationsDetails', $data);
+    }
+
     function testUnpublishPreliminaryDoesNotTouchFinal(): void
     {
         $this->enableTwoStagePublish();

@@ -862,7 +862,7 @@ class Module extends \MapasCulturais\Module{
         $app->hook('entity(Registration).jsonSerialize', function (&$data) use($app) {
             /** @var \MapasCulturais\Entities\Registration $this */
             $opportunity = $this->opportunity;
-            if ($opportunity->publishedRegistrations && ($evaluation_configuration = $opportunity->evaluationMethodConfiguration)) {
+            if ($opportunity->areRegistrationResultsPublished() && ($evaluation_configuration = $opportunity->evaluationMethodConfiguration)) {
                 if ($evaluation_configuration->publishEvaluationDetails){
                     $em = $evaluation_configuration->evaluationMethod;
                     $data['consolidatedDetails'] = $em->getConsolidatedDetails($this);
