@@ -28,6 +28,16 @@ app.component('opportunity-phase-status' , {
             type: Boolean,
             default: true
         },
+
+        /**
+         * Oculta a publicação nesta seção. Usado pela fase de recurso, que não
+         * está em `phases` (nextPhase não resolve a avaliação seguinte): a
+         * publicação fica só na seção da avaliação, como nas demais fases.
+         */
+        hidePublish: {
+            type: Boolean,
+            default: false
+        },
     },
 
     computed: {

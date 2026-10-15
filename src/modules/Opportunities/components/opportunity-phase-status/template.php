@@ -16,7 +16,7 @@ $this->import('
         <div v-if="!entity.isLastPhase" class="col-12 grid-12">
             <opportunity-phase-list-registrations :entity="entity" :phases="phases" :tab="tab"></opportunity-phase-list-registrations>
         </div>
-        <template v-if="nextPhase?.__objectType != 'evaluationmethodconfiguration'">
+        <template v-if="!hidePublish && nextPhase?.__objectType != 'evaluationmethodconfiguration'">
             <div v-if="entity.isLastPhase" :class="['opportunity-phase-status_action--center col-12']">
                 <opportunity-phase-publish-config-registration  :phase="entity" :phases="phases" :tab="tab" :main-phase-only="mainPhaseOnly" hide-datepicker hide-checkbox ></opportunity-phase-publish-config-registration>
             </div>

@@ -98,7 +98,7 @@ $this->import('
             </template>
 
             <template #content v-if="tab === 'registrations'">
-                <opportunity-phase-status :entity="phase.appealPhase" :phases="phases" :tab="tab" :main-phase-only="false"></opportunity-phase-status>
+                <opportunity-phase-status :entity="phase.appealPhase" :phases="phases" :tab="tab" :main-phase-only="false" hide-publish></opportunity-phase-status>
             </template>
         </mc-accordion>
 
