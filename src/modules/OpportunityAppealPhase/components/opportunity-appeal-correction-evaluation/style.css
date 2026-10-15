@@ -2,27 +2,211 @@
  * opportunity-appeal-correction-evaluation (F3 #19 + F7 #51)
  *
  * Estilo local no padrão do módulo (auto-enfileirado, sem build — mesmo
- * precedente do mc-modal): apenas o layout das opções por campo do método
- * documental; o restante usa as classes do tema (grid-12, card, button).
+ * precedente do mc-modal). A página roda no layout `panel`; cards vêm do
+ * mc-card e inputs do `.field` do tema — aqui só o layout interno.
  */
+
+.opportunity-appeal-correction-evaluation {
+    background-color: var(--mc-gray-100);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-height: 100%;
+    padding: 2rem;
+}
+
+@media (max-width: 800px) {
+    .opportunity-appeal-correction-evaluation {
+        padding: 1rem;
+    }
+}
+
+.opportunity-appeal-correction-evaluation .mc-card__title h3 {
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+.opportunity-appeal-correction-evaluation .mc-card__content {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 1.5rem;
+}
+
+/* Dados da designação */
+.opportunity-appeal-correction-evaluation__summary {
+    display: grid;
+    gap: 1.25rem 1.5rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    width: 100%;
+}
+
+@media (max-width: 800px) {
+    .opportunity-appeal-correction-evaluation__summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.opportunity-appeal-correction-evaluation__info {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    min-width: 0;
+}
+
+.opportunity-appeal-correction-evaluation__info--wide {
+    grid-column: span 2;
+}
+
+.opportunity-appeal-correction-evaluation__info dt {
+    color: var(--mc-low-500);
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+.opportunity-appeal-correction-evaluation__label {
+    font-family: var(--mc-font-headings);
+    font-size: .875rem;
+    font-weight: 600;
+}
+
+.opportunity-appeal-correction-evaluation__info dd {
+    font-weight: 600;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.opportunity-appeal-correction-evaluation__badge {
+    background-color: var(--mc-gray-100);
+    border: 1px solid var(--mc-gray-300);
+    border-radius: var(--mc-border-radius-pill);
+    display: inline-block;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: .4rem .75rem;
+}
+
+.opportunity-appeal-correction-evaluation__badge--designated,
+.opportunity-appeal-correction-evaluation__badge--reopened {
+    border-color: var(--mc-primary-500);
+    color: var(--mc-primary-500);
+}
+
+.opportunity-appeal-correction-evaluation__badge--draft {
+    border-color: var(--mc-warning-500);
+    color: var(--mc-warning-700);
+}
+
+.opportunity-appeal-correction-evaluation__badge--sent {
+    border-color: var(--mc-success-500);
+    color: var(--mc-success-700);
+}
+
+/* Itens (critérios / campos / resultado) */
+.opportunity-appeal-correction-evaluation__list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.opportunity-appeal-correction-evaluation__item {
+    background-color: var(--mc-gray-100);
+    border-radius: var(--mc-border-radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+}
+
+.opportunity-appeal-correction-evaluation__item p {
+    margin: 0;
+}
+
+.opportunity-appeal-correction-evaluation__item-header {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.5rem;
+    justify-content: space-between;
+}
+
+.opportunity-appeal-correction-evaluation__item-header h4 {
+    margin: 0;
+}
+
+.opportunity-appeal-correction-evaluation__item-meta {
+    color: var(--mc-low-500);
+    display: flex;
+    font-size: .875rem;
+    gap: 1.25rem;
+}
+
+.opportunity-appeal-correction-evaluation__compare {
+    align-items: end;
+    display: grid;
+    gap: 1rem 1.5rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+@media (max-width: 800px) {
+    .opportunity-appeal-correction-evaluation__compare {
+        grid-template-columns: 1fr;
+    }
+}
+
+.opportunity-appeal-correction-evaluation__original {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.opportunity-appeal-correction-evaluation__value {
+    align-items: center;
+    background-color: var(--mc-white);
+    border: 1px dashed var(--mc-gray-500);
+    border-radius: var(--mc-border-radius-xs);
+    display: flex;
+    font-weight: 600;
+    min-height: 3rem;
+    padding: 0 .875rem;
+}
+
+.opportunity-appeal-correction-evaluation__item .field input,
+.opportunity-appeal-correction-evaluation__item .field select,
+.opportunity-appeal-correction-evaluation__item .field textarea {
+    background-color: var(--mc-white);
+}
 
 .opportunity-appeal-correction-evaluation__field-options {
     display: flex;
     flex-wrap: wrap;
-    gap: .75rem;
+    gap: .75rem 1.5rem;
+    min-height: 3rem;
 }
 
-.opportunity-appeal-correction-evaluation__field-option {
+.opportunity-appeal-correction-evaluation__total {
     align-items: center;
-    cursor: pointer;
-    display: inline-flex;
-    gap: .25rem;
-}
-
-.opportunity-appeal-correction-evaluation__field-option input {
-    margin: 0;
-}
-
-.opportunity-appeal-correction-evaluation__criterion textarea {
+    border-top: 1px solid var(--mc-gray-300);
+    display: flex;
+    font-size: 1.125rem;
+    justify-content: space-between;
+    padding-top: 1rem;
     width: 100%;
+}
+
+.opportunity-appeal-correction-evaluation__total strong {
+    font-size: 1.5rem;
+}
+
+/* Ações */
+.opportunity-appeal-correction-evaluation__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: flex-end;
 }

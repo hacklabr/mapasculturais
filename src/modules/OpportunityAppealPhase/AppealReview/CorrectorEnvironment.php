@@ -34,7 +34,9 @@ class CorrectorEnvironment
         $slot = $review->originalEvaluation;
         $scope_ids = $this->getReleasedCriteriaIds($review);
 
-        $original = $this->filterEvaluationData((array) $slot->getEvaluationData(), $scope_ids);
+        // Após envio o slot já contém a nota corrigida; a original fica no snapshot da designação.
+        $original_data = $review->originalValue ?? $slot->getEvaluationData();
+        $original = $this->filterEvaluationData((array) $original_data, $scope_ids);
         $draft = $review->correctedValue
             ? $this->filterEvaluationData((array) $review->correctedValue, $scope_ids)
             : null;
