@@ -10,6 +10,7 @@ use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
+use OpportunityAppealPhase\AppealReview\CorrectorEnvironment;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 use Psr\Http\Message\ServerRequestInterface;
 use Tests\Abstract\TestCase;
@@ -150,6 +151,7 @@ class AppealScoreColumnsTest extends TestCase
             'registration2' => $registration_2,
             'slotA' => $slot_a,
             'slotB' => $slot_b,
+            'appealPhase' => $appeal_phase,
         ];
     }
 
@@ -223,6 +225,94 @@ class AppealScoreColumnsTest extends TestCase
         $this->assertEquals(1.0, $rows[$scenario['slotB']->id]['originalScore'], 'sem correção: originalScore = nota atual');
         $this->assertEquals(1.0, $rows[$scenario['slotB']->id]['correctedScore']);
         $this->assertEquals(0.0, $rows[$scenario['slotB']->id]['scoreDifference']);
+    }
+
+    /**
+     * Reabertura pelo gestor: a correção aplicada segue vigente e a nota
+     * original continua vindo do snapshot (colunas e ambiente do corretor).
+     */
+    function testReopenedCorrectionKeepsOriginalScoreVisible(): void
+    {
+        $scenario = $this->createScenario();
+        $this->applyRealCorrection($scenario);
+
+        $app = App::i();
+        /** @var RegistrationAppealReview $review */
+        $review = $app->repo(RegistrationAppealReview::class)->findOneBy(['originalEvaluation' => $scenario['slotA']->id]);
+
+        $reopened = $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'reopen', [$review->id], [])
+        );
+        $this->assertEquals(200, $reopened['status'], 'Reabertura: ' . json_encode($reopened['json']));
+
+        $query = new ApiQuery(RegistrationEvaluation::class, [
+            '@select' => 'id,originalScore,correctedScore,scoreDifference',
+            'id' => "EQ({$scenario['slotA']->id})",
+        ]);
+        $row = $query->find()[0];
+
+        $this->assertEquals(-1.0, $row['originalScore'], 'Reaberta: original continua sendo o snapshot, não a nota vigente.');
+        $this->assertEquals(1.0, $row['correctedScore']);
+        $this->assertEquals(2.0, $row['scoreDifference'], 'Reaberta: diferença não zera enquanto o corretor revisa.');
+
+        $app->em->refresh($review);
+        $this->login($scenario['committeeUser']);
+        $environment = (new CorrectorEnvironment())->build($review);
+        $original = (array) $environment['originalEvaluation'];
+
+        $this->assertEquals('invalid', ((array) $original['doc_a'])['evaluation'], 'Ambiente do corretor mostra a avaliação original, não a já corrigida.');
+        $this->assertEquals('valid', ((array) ((array) $environment['draft'])['doc_a'])['evaluation'], 'Rascunho pré-preenchido com a correção enviada.');
+    }
+
+    /**
+     * Lista da fase de recurso: a linha é a inscrição do recurso, mas as
+     * médias vêm da inscrição de mesmo número na fase principal (onde a
+     * correção foi aplicada), não da avaliação do recurso.
+     */
+    function testAppealPhaseRowUsesMainPhaseScores(): void
+    {
+        $scenario = $this->createScenario();
+        $this->applyRealCorrection($scenario);
+
+        $app = App::i();
+        $main_registration = $scenario['registration1'];
+
+        $app->disableAccessControl();
+        $appeal_registration = new Registration();
+        $appeal_registration->opportunity = $scenario['appealPhase'];
+        $appeal_registration->owner = $main_registration->owner;
+        $appeal_registration->number = $main_registration->number;
+        $appeal_registration->status = Registration::STATUS_APPROVED;
+        $appeal_registration->save(true);
+
+        // Avaliação do recurso (contínua): resultado 10 = código de status "deferido".
+        $appeal_evaluation = new RegistrationEvaluation();
+        $appeal_evaluation->registration = $appeal_registration;
+        $appeal_evaluation->user = $scenario['committeeUser'];
+        $appeal_evaluation->status = RegistrationEvaluation::STATUS_SENT;
+        $appeal_evaluation->setEvaluationData((object) ['status' => '10', 'obs' => 'deferido']);
+        $appeal_evaluation->save(true);
+        $app->enableAccessControl();
+
+        $this->assertEquals('10', (string) $appeal_evaluation->result, 'Pré-condição: avaliação do recurso com resultado 10.');
+
+        $query = new ApiQuery(Registration::class, [
+            '@select' => 'id,averageOriginalScore,averageCorrectedScore,scoreDifference',
+            'id' => "IN({$appeal_registration->id},{$main_registration->id})",
+        ]);
+        $rows = [];
+        foreach ($query->find() as $row) {
+            $rows[(int) $row['id']] = $row;
+        }
+
+        $appeal_row = $rows[$appeal_registration->id];
+        $this->assertEquals(0.0, $appeal_row['averageOriginalScore'], 'Recurso: média original da fase principal, não o 10 da avaliação do recurso.');
+        $this->assertEquals(1.0, $appeal_row['averageCorrectedScore'], 'Recurso: média corrigida da fase principal.');
+        $this->assertEquals(1.0, $appeal_row['scoreDifference']);
+
+        $main_row = $rows[$main_registration->id];
+        $this->assertEquals($main_row['averageOriginalScore'], $appeal_row['averageOriginalScore'], 'Mesma média nas duas listas.');
+        $this->assertEquals($main_row['averageCorrectedScore'], $appeal_row['averageCorrectedScore']);
     }
 
     function testRegistrationAveragesAndDifference(): void

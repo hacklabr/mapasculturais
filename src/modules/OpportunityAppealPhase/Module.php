@@ -673,7 +673,14 @@ class Module extends \MapasCulturais\Module {
             }
         }
 
-        $rows = $this->fetchScoresByRegistration($registration_ids);
+        // Linha da fase de recurso: as notas (e correções) estão na inscrição
+        // de mesmo número na fase principal, não na avaliação do recurso.
+        $score_source = $this->mapAppealToMainRegistrations($registration_ids);
+
+        $rows = $this->fetchScoresByRegistration(array_values(array_unique(array_merge(
+            $registration_ids,
+            array_values($score_source)
+        ))));
 
         $by_registration = [];
         foreach ($rows as $row) {
@@ -688,7 +695,8 @@ class Module extends \MapasCulturais\Module {
 
         foreach ($result as &$row) {
             $registration_id = (int) ($row['id'] ?? 0);
-            $evaluations = $by_registration[$registration_id] ?? [];
+            $source_id = $score_source[$registration_id] ?? $registration_id;
+            $evaluations = $by_registration[$source_id] ?? [];
 
             $corrected_values = [];
             $original_values = [];
@@ -759,6 +767,43 @@ class Module extends \MapasCulturais\Module {
         }
 
         return $snapshot;
+    }
+
+    /**
+     * Para inscrições de fase de recurso, a inscrição de mesmo número na fase
+     * principal (oportunidade cujo metadado `appealPhase` aponta para a fase
+     * de recurso, serializado como "<classe>:<id>").
+     *
+     * @param int[] $registration_ids
+     * @return array<int, int> id da inscrição do recurso => id da inscrição principal
+     */
+    private function mapAppealToMainRegistrations(array $registration_ids): array
+    {
+        if (!$registration_ids) {
+            return [];
+        }
+
+        $app = App::i();
+        $ids = implode(',', array_map('intval', $registration_ids));
+
+        $rows = $app->em->getConnection()->fetchAllAssociative("
+            SELECT appeal_reg.id AS appeal_id, main_reg.id AS main_id
+            FROM registration appeal_reg
+            JOIN opportunity_meta om
+                ON om.key = 'appealPhase'
+                AND split_part(om.value, ':', 2) = appeal_reg.opportunity_id::text
+            JOIN registration main_reg
+                ON main_reg.opportunity_id = om.object_id
+                AND main_reg.number = appeal_reg.number
+            WHERE appeal_reg.id IN ({$ids})
+        ");
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(int) $row['appeal_id']] = (int) $row['main_id'];
+        }
+
+        return $map;
     }
 
     /**
