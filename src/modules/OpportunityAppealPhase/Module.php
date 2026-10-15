@@ -49,6 +49,29 @@ class Module extends \MapasCulturais\Module {
             $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
         });
 
+        // Aba "Correções designadas" em Minhas avaliações: ponto de entrada do corretor
+        $app->hook('component(panel--evaluations-tabs).tabs:end', function () use ($app, $self) {
+            /** @var \MapasCulturais\Themes\BaseV2\Theme $this */
+            if (!$self->isAppealScoreCorrectionEnabled() || $app->user->is('guest')) {
+                return;
+            }
+
+            $assignments_count = $app->repo(RegistrationAppealReview::class)->count([
+                'correctorUser' => $app->user->id,
+            ]);
+
+            if (!$assignments_count) {
+                return;
+            }
+
+            $this->import('panel--appeal-correction-assignments');
+            ?>
+            <mc-tab v-if="!isReportingPhase" label="<?= i::esc_attr__('Correções designadas') ?>" slug="appealCorrections" class="panel-evaluations">
+                <panel--appeal-correction-assignments></panel--appeal-correction-assignments>
+            </mc-tab>
+            <?php
+        });
+
         // PR5 (issue #15): notifica corretor designado quando a designação é criada
         $app->hook('entity(OpportunityAppealPhase.Entities.RegistrationAppealReview).insert:after', function () {
             /** @var RegistrationAppealReview $this */
@@ -784,7 +807,7 @@ class Module extends \MapasCulturais\Module {
         return is_numeric($value) ? (float) $value : null;
     }
 
-    private function isAppealScoreCorrectionEnabled(): bool
+    public function isAppealScoreCorrectionEnabled(): bool
     {
         return (bool) env('APPEAL_SCORE_CORRECTION', $this->config['featureFlag.appealScoreCorrection']);
     }

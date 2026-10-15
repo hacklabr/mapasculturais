@@ -76,6 +76,73 @@ class CorrectorEnvironment
         return $payload;
     }
 
+    /**
+     * Designações do corretor (aba "Correções designadas" de Minhas
+     * avaliações): ativas primeiro, depois as enviadas como histórico.
+     * `available` = ativa e dentro da janela de prazo — a mesma regra que o
+     * ambiente aplica em assertCanAccess.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listForCorrector($user): array
+    {
+        $app = App::i();
+        $this->assertFeatureEnabled();
+
+        if ($user->is('guest')) {
+            return [];
+        }
+
+        /** @var RegistrationAppealReview[] $reviews */
+        $reviews = $app->repo(RegistrationAppealReview::class)->findBy(
+            ['correctorUser' => $user->id],
+            ['endsAt' => 'ASC', 'id' => 'ASC']
+        );
+
+        usort($reviews, static function (RegistrationAppealReview $a, RegistrationAppealReview $b): int {
+            if ($a->isActive() !== $b->isActive()) {
+                return $a->isActive() ? -1 : 1;
+            }
+
+            if (!$a->isActive()) {
+                return ($b->sentTimestamp?->getTimestamp() ?? 0) <=> ($a->sentTimestamp?->getTimestamp() ?? 0);
+            }
+
+            return 0;
+        });
+
+        $now = new DateTime();
+        $items = [];
+
+        foreach ($reviews as $review) {
+            $registration = $review->registration;
+            $opportunity = $registration->opportunity;
+            $not_started = $review->startsAt && $now < $review->startsAt;
+            $expired = $review->endsAt && $now > $review->endsAt;
+
+            $items[] = [
+                'assignmentId' => (int) $review->id,
+                'registrationNumber' => $registration->number,
+                'opportunityName' => (string) ($opportunity->parent?->name ?? $opportunity->name),
+                'phaseName' => (string) $opportunity->name,
+                'targetEvaluatorName' => $this->resolveEvaluatorName($review),
+                'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
+                'startsAt' => $review->startsAt ? $review->startsAt->format('c') : null,
+                'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
+                'sentAt' => $review->sentTimestamp ? $review->sentTimestamp->format('c') : null,
+                'available' => $review->isActive() && !$not_started && !$expired,
+                'correctionUrl' => self::correctionUrl($review),
+            ];
+        }
+
+        return $items;
+    }
+
+    public static function correctionUrl(RegistrationAppealReview $review): string
+    {
+        return App::i()->createUrl('appealCorrector', 'correction', [$review->id]);
+    }
+
     private function assertCanAccess(RegistrationAppealReview $review, $user): void
     {
         if ($user->is('guest')) {

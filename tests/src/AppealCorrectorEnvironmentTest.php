@@ -327,6 +327,76 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertEquals('Seção 1', $criterion['sectionName']);
     }
 
+    function testAssignmentsListOnlyOfLoggedCorrectorWithSentAsHistory(): void
+    {
+        $scenario = $this->createScenario();
+        $builder = new CorrectorEnvironment();
+
+        $this->login($scenario['corrector']);
+        $items = $builder->listForCorrector($scenario['corrector']);
+        $this->assertCount(1, $items);
+        $this->assertEquals($scenario['review']->id, $items[0]['assignmentId']);
+        $this->assertEquals($scenario['registration']->number, $items[0]['registrationNumber']);
+        $this->assertEquals('draft', $items[0]['status']);
+        $this->assertTrue($items[0]['available']);
+        $this->assertEquals(CorrectorEnvironment::correctionUrl($scenario['review']), $items[0]['correctionUrl']);
+
+        $this->login($scenario['outsider']);
+        $this->assertSame([], $builder->listForCorrector($scenario['outsider']));
+
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->status = RegistrationAppealReview::STATUS_SENT;
+        $scenario['review']->sentTimestamp = new DateTime();
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $items = $builder->listForCorrector($scenario['corrector']);
+        $this->assertCount(1, $items);
+        $this->assertEquals('sent', $items[0]['status']);
+        $this->assertFalse($items[0]['available']);
+        $this->assertNotNull($items[0]['sentAt']);
+    }
+
+    function testAssignmentsListFlagsExpiredWindowAsUnavailable(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->startsAt = new DateTime('-2 days');
+        $scenario['review']->endsAt = new DateTime('-1 day');
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $items = (new CorrectorEnvironment())->listForCorrector($scenario['corrector']);
+
+        $this->assertCount(1, $items);
+        $this->assertFalse($items[0]['available']);
+    }
+
+    function testAssignmentsEndpointHttpHappyPath(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['corrector']);
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'assignments',
+            ajax: true
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(200, $app->response->getStatusCode());
+        $body = json_decode((string) $app->response->getBody(), true);
+        $this->assertCount(1, $body);
+        $this->assertEquals($scenario['review']->id, $body[0]['assignmentId']);
+    }
+
     function testCorrectionPageRendersForCorrector(): void
     {
         $scenario = $this->createScenario();
