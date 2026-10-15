@@ -106,6 +106,13 @@ app.component('opportunity-phase-publish-config-registration' , {
         showFinalPublishButton() {
             return this.mainPhaseOnly && !this.isAppealPhase;
         },
+        /**
+         * Instância da fase de recurso: publicação em estágio único, como
+         * antes do R02 (sem preliminar/final).
+         */
+        isAppealInstance() {
+            return !this.showFinalPublishButton;
+        },
     },
 
     methods: {
@@ -127,14 +134,14 @@ app.component('opportunity-phase-publish-config-registration' , {
             const messages = useMessages();
             this.phase.POST('publishRegistrations', this.phase).then(item => {
                 this.phase.publishedRegistrations = true;
-                messages.success(this.text('sucesso_publicar_final'));
+                messages.success(this.text(this.isAppealInstance ? 'sucesso_publicar' : 'sucesso_publicar_final'));
             });
         },
         unpublishRegistration () {
             const messages = useMessages();
             this.phase.POST('unpublishRegistrations', this.phase).then(item => {
                 this.phase.publishedRegistrations = false;
-                messages.success(this.text('sucesso_despublicar_final'));
+                messages.success(this.text(this.isAppealInstance ? 'sucesso_despublicar' : 'sucesso_despublicar_final'));
             });
         }
     }
