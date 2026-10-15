@@ -100,6 +100,50 @@ class Notifier
         );
     }
 
+    /**
+     * Prazo alterado pelo gestor em designação ativa.
+     */
+    public static function notifyDeadlineChanged(RegistrationAppealReview $review): void
+    {
+        if (!self::isScoreCorrectionEnabled()) {
+            return;
+        }
+
+        $corrector = $review->correctorUser;
+        if (!$corrector) {
+            return;
+        }
+
+        $registration = $review->registration;
+        $opportunity = $registration->opportunity;
+        $deadline = $review->endsAt
+            ? $review->endsAt->format('d/m/Y H:i')
+            : i::__('sem prazo definido');
+
+        $message = sprintf(
+            i::__('O prazo da correção da avaliação da inscrição %s em %s foi alterado pela gestão. Novo prazo: %s.'),
+            $registration->number,
+            $opportunity->name,
+            $deadline
+        );
+
+        $notification_message = sprintf(
+            '%s <a href="%s">%s</a>',
+            $message,
+            CorrectorEnvironment::correctionUrl($review),
+            i::__('Acessar correção')
+        );
+
+        self::sendNotification($corrector, $notification_message);
+        self::sendEmail(
+            $corrector,
+            $review,
+            true,
+            $message,
+            sprintf(i::__('Prazo de correção alterado em %s'), $opportunity->name)
+        );
+    }
+
     public static function notifyCorrectionSent(RegistrationAppealReview $review): void
     {
         if (!self::isScoreCorrectionEnabled()) {
