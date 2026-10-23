@@ -289,6 +289,26 @@
     margin: 0;
 }
 
+.opportunity-appeal-correction-assignment__visibility {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    margin-top: .25rem;
+}
+
+.opportunity-appeal-correction-assignment__visibility-item {
+    align-items: flex-start;
+    cursor: pointer;
+    display: flex;
+    font-size: .875rem;
+    gap: .5rem;
+    line-height: 1.3;
+}
+
+.opportunity-appeal-correction-assignment__visibility-item input {
+    margin: .15rem 0 0;
+}
+
 /* Mesmo breakpoint do mc-modal/.grid-12 (800px): linhas empilham. */
 @media (max-width: 800px) {
     .opportunity-appeal-correction-assignment__header {

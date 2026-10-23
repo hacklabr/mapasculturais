@@ -186,6 +186,24 @@ $this->import('
                                 </div>
                             </div>
                         </div>
+
+                        <!-- CA-4 / CA-6: o que o corretor pode ver no ambiente -->
+                        <div v-if="slot.checked" class="opportunity-appeal-correction-assignment__visibility">
+                            <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'show-opinion-' + slot.id">
+                                <input
+                                    type="checkbox"
+                                    :id="'show-opinion-' + slot.id"
+                                    v-model="slot.showAppealOpinion">
+                                <span>{{ text('show appeal opinion') }}</span>
+                            </label>
+                            <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'show-valuer-' + slot.id">
+                                <input
+                                    type="checkbox"
+                                    :id="'show-valuer-' + slot.id"
+                                    v-model="slot.showOriginalValuerName">
+                                <span>{{ text('show original valuer name') }}</span>
+                            </label>
+                        </div>
                     </template>
                 </div>
 
@@ -212,6 +230,16 @@ $this->import('
                         <div v-if="reviewSentAt(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__status-detail">
                             <mc-icon name="send"></mc-icon>
                             <span>{{ reviewSentAtLabel(reviewForSlot(slot)) }}: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
+                        </div>
+
+                        <div class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="eye"></mc-icon>
+                            <span>{{ reviewShowsAppealOpinion(reviewForSlot(slot)) ? text('appeal opinion visible') : text('appeal opinion hidden') }}</span>
+                        </div>
+
+                        <div class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="agent"></mc-icon>
+                            <span>{{ reviewShowsOriginalValuerName(reviewForSlot(slot)) ? text('original valuer visible') : text('original valuer hidden') }}</span>
                         </div>
 
                         <!-- F6: escopo da designação (todos liberados / X de Y) -->
@@ -453,6 +481,25 @@ $this->import('
                                         {{ text('select at least one criterion') }}
                                     </div>
                                 </div>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__visibility">
+                                <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'sub-show-opinion-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'sub-show-opinion-' + slot.id"
+                                        v-model="slot.substituteShowAppealOpinion"
+                                        :disabled="slot.substituting">
+                                    <span>{{ text('show appeal opinion') }}</span>
+                                </label>
+                                <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'sub-show-valuer-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'sub-show-valuer-' + slot.id"
+                                        v-model="slot.substituteShowOriginalValuerName"
+                                        :disabled="slot.substituting">
+                                    <span>{{ text('show original valuer name') }}</span>
+                                </label>
                             </div>
 
                             <div class="opportunity-appeal-correction-assignment__substitution-actions">

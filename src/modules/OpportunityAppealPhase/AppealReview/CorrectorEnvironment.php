@@ -7,6 +7,7 @@ use MapasCulturais\App;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Exceptions\PermissionDenied;
 use MapasCulturais\i;
+use Opportunities\Module as OpportunitiesModule;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 use OpportunityAppealPhase\Module;
 
@@ -44,24 +45,32 @@ class CorrectorEnvironment
         $main_emc = $slot->registration->opportunity->evaluationMethodConfiguration;
         $method_id = $main_emc ? (string) $main_emc->type->id : '';
 
+        $registration = $review->registration;
+
         $payload = [
             'assignmentId' => (int) $review->id,
             'evaluationId' => (int) $slot->id,
-            'registrationId' => (int) $review->registration->id,
-            'registrationNumber' => $review->registration->number,
-            'opportunityName' => (string) $review->registration->opportunity->name,
+            'registrationId' => (int) $registration->id,
+            'registrationNumber' => $registration->number,
+            'opportunityName' => (string) $registration->opportunity->name,
+            // Contexto da inscrição para o corretor refazer a análise (agente,
+            // categoria etc.) — o embed BaseV1 só mostra campos configurados.
+            'registrationContext' => $this->buildRegistrationContext($registration),
             // F7 (#51): método da fase principal — define como o frontend
             // renderiza o formulário (critérios técnicos, campos documentais
             // ou resultado global do simples).
             'method' => $method_id,
             'criteria' => $this->buildCriteriaMetadata($slot, $scope_ids),
-            'targetEvaluatorName' => $this->resolveEvaluatorName($review),
             'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
             'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
             'correctionType' => $review->correctionType,
             'originalEvaluation' => (object) $original,
             'draft' => $draft !== null ? (object) $draft : null,
         ];
+
+        if ($this->shouldShowOriginalValuerName($review)) {
+            $payload['targetEvaluatorName'] = $this->resolveEvaluatorName($review);
+        }
 
         if ($method_id === 'documentary') {
             $payload['fields'] = $this->buildDocumentaryFields($review, $scope_ids);
@@ -117,15 +126,20 @@ class CorrectorEnvironment
         foreach ($reviews as $review) {
             $registration = $review->registration;
             $opportunity = $registration->opportunity;
+            $first_phase = $opportunity->firstPhase ?? $opportunity;
             $not_started = $review->startsAt && $now < $review->startsAt;
             $expired = $review->endsAt && $now > $review->endsAt;
 
             $items[] = [
                 'assignmentId' => (int) $review->id,
                 'registrationNumber' => $registration->number,
+                'opportunityId' => (int) $opportunity->id,
+                'firstPhaseId' => (int) $first_phase->id,
                 'opportunityName' => (string) ($opportunity->parent?->name ?? $opportunity->name),
                 'phaseName' => (string) $opportunity->name,
-                'targetEvaluatorName' => $this->resolveEvaluatorName($review),
+                'targetEvaluatorName' => $this->shouldShowOriginalValuerName($review)
+                    ? $this->resolveEvaluatorName($review)
+                    : null,
                 'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
                 'startsAt' => $review->startsAt ? $review->startsAt->format('c') : null,
                 'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
@@ -345,7 +359,60 @@ class CorrectorEnvironment
     }
 
     /**
-     * Parecer da Comissão de Recursos na fase de recurso (mesma inscrição por number).
+     * Nome do avaliador original (dono do slot). Ausente no escopo = true
+     * (designações antigas sempre exibiam o nome); false explícito oculta.
+     */
+    private function shouldShowOriginalValuerName(RegistrationAppealReview $review): bool
+    {
+        $scope = $review->releasedScope;
+        if ($scope === null) {
+            return true;
+        }
+
+        $scope = (array) $scope;
+        if (!array_key_exists('showOriginalValuerName', $scope)) {
+            return true;
+        }
+
+        return !empty($scope['showOriginalValuerName']);
+    }
+
+    /**
+     * Resumo da inscrição para a coluna esquerda do ambiente do corretor.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildRegistrationContext($registration): array
+    {
+        $owner = $registration->owner;
+        $agents_data = $registration->agentsData;
+        $owner_data = null;
+
+        if (is_object($agents_data) && isset($agents_data->owner)) {
+            $owner_data = $agents_data->owner;
+        } elseif (is_array($agents_data) && isset($agents_data['owner'])) {
+            $owner_data = (object) $agents_data['owner'];
+        }
+
+        return [
+            'id' => (int) $registration->id,
+            'number' => $registration->number,
+            'category' => $registration->category,
+            'range' => $registration->range,
+            'proponentType' => $registration->proponentType,
+            'singleUrl' => $registration->getSingleUrl(),
+            'owner' => $owner ? $owner->simplify('id,name,singleUrl') : null,
+            'ownerSnapshot' => $owner_data ? [
+                'name' => $owner_data->name ?? null,
+                'shortDescription' => $owner_data->shortDescription ?? null,
+                'terms' => $owner_data->terms ?? null,
+            ] : null,
+        ];
+    }
+
+    /**
+     * Parecer da Comissão de Recursos — mesmo formato do "Exibir detalhamento"
+     * (evaluationsDetails + consolidatedDetails por método), para N avaliadores.
      *
      * @return array<string, mixed>|null
      */
@@ -364,42 +431,69 @@ class CorrectorEnvironment
             'number' => $registration->number,
         ]);
 
-        if (!$appeal_registration) {
+        if (!$appeal_registration || !$appeal_registration->evaluationMethod) {
             return null;
         }
 
-        /** @var RegistrationEvaluation[] $evaluations */
-        $evaluations = $app->repo('RegistrationEvaluation')->findBy([
-            'registration' => $appeal_registration,
-        ]);
+        $em = $appeal_registration->evaluationMethod;
+        $emc = $appeal_registration->opportunity->evaluationMethodConfiguration;
+        $sent_evaluations = $appeal_registration->sentEvaluations;
 
-        if (!$evaluations) {
+        if (!$sent_evaluations) {
             return null;
         }
 
-        $opinions = [];
-        foreach ($evaluations as $evaluation) {
-            if ((int) $evaluation->status < RegistrationEvaluation::STATUS_EVALUATED) {
-                continue;
+        $evaluations_details = [];
+        foreach ($sent_evaluations as $evaluation) {
+            $detail = $em->getEvaluationDetails($evaluation);
+            $detail['id'] = (int) $evaluation->id;
+
+            if (isset($detail['entityEvaluation']) && $detail['entityEvaluation'] instanceof RegistrationEvaluation) {
+                $detail['entityEvaluation'] = $detail['entityEvaluation']->jsonSerialize();
             }
 
-            $opinions[] = [
-                'evaluationId' => (int) $evaluation->id,
-                'result' => $evaluation->result,
-                'resultString' => $evaluation->resultString,
-                'status' => (int) $evaluation->status,
-                'evaluationData' => $evaluation->getEvaluationData(),
-                'valuerName' => $evaluation->user->profile->name ?? $evaluation->user->email,
-            ];
+            if ($emc) {
+                OpportunitiesModule::enrichEvaluationDetailWithValuerInfo(
+                    $detail,
+                    $appeal_registration,
+                    $emc,
+                    $evaluation,
+                    $app
+                );
+            }
+
+            // Parecer liberado ao corretor: nomes da comissão sempre visíveis
+            // (equivalente ao detalhamento com publishValuerNames / @control).
+            if (empty($detail['valuer'])) {
+                $detail['valuer'] = $evaluation->user->profile->simplify('id,name,singleUrl');
+            }
+
+            $evaluations_details[] = $detail;
         }
 
-        if (!$opinions) {
+        if (!$evaluations_details) {
             return null;
         }
+
+        try {
+            $consolidated = $em->getConsolidatedDetails($appeal_registration) ?: [];
+        } catch (\Throwable $e) {
+            $consolidated = [];
+        }
+
+        if (empty($consolidated['sentEvaluationCount'])) {
+            $consolidated['sentEvaluationCount'] = count($evaluations_details);
+        }
+
+        $method_id = $emc ? (string) $emc->type->id : (string) $em->slug;
 
         return [
             'registrationId' => (int) $appeal_registration->id,
-            'evaluations' => $opinions,
+            'method' => $method_id,
+            'score' => $appeal_registration->score,
+            'consolidatedResult' => $appeal_registration->consolidatedResult,
+            'consolidatedDetails' => $consolidated,
+            'evaluationsDetails' => $evaluations_details,
         ];
     }
 

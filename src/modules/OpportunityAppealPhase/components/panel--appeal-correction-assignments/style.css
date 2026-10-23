@@ -1,7 +1,34 @@
 /*
  * panel--appeal-correction-assignments — aba "Correções designadas" de
- * Minhas avaliações. Card no mesmo padrão visual do evaluation-card.
+ * Minhas avaliações, bloco do painel e #evaluations da oportunidade.
+ * Card no mesmo padrão visual do evaluation-card.
  */
+
+/* Carrossel do painel: reaproveita .panel--pending-evaluations; ajuste do footer */
+.panel--appeal-correction-assignments--carousel .panel-entity-card__footer {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.panel--appeal-correction-assignments__title {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.5rem;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.panel--appeal-correction-assignments__title label {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.panel--appeal-correction-assignments__see-all {
+    font-size: .875rem;
+    font-weight: 600;
+    text-decoration: underline;
+}
 
 .panel--appeal-correction-assignments__empty {
     margin: 0;

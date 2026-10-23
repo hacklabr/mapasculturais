@@ -13,6 +13,7 @@ $this->layout = 'panel';
 $this->import('
     mc-icon
     opportunity-appeal-correction-evaluation
+    v1-embed-tool
 ');
 ?>
 
@@ -29,7 +30,7 @@ $this->import('
         </div>
 
         <p class="panel-page__header-subtitle">
-            <?= i::__('Revise a avaliação designada e informe a nota corrigida nos critérios liberados.') ?>
+            <?= i::__('Consulte o formulário da inscrição, revise o parecer do recurso (se liberado) e informe a nota corrigida nos critérios liberados.') ?>
         </p>
     </header>
 

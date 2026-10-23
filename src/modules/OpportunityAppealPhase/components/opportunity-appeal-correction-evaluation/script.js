@@ -24,6 +24,7 @@ app.component('opportunity-appeal-correction-evaluation', {
             savingDraft: false,
             sending: false,
             submitted: false,
+            _committeeEvaluationEntities: {},
         };
     },
 
@@ -120,6 +121,48 @@ app.component('opportunity-appeal-correction-evaluation', {
 
             return labels[this.environment?.correctionType] || this.environment?.correctionType || '';
         },
+
+        committeeRegistration() {
+            const opinion = this.environment?.committeeOpinion;
+            if (!opinion?.evaluationsDetails?.length) {
+                return null;
+            }
+
+            return {
+                id: opinion.registrationId,
+                score: opinion.score ?? null,
+                consolidatedResult: opinion.consolidatedResult ?? null,
+                consolidatedDetails: opinion.consolidatedDetails || {},
+                evaluationsDetails: opinion.evaluationsDetails,
+            };
+        },
+
+        committeeOpinionMethod() {
+            return this.environment?.committeeOpinion?.method || '';
+        },
+
+        registrationContext() {
+            return this.environment?.registrationContext || null;
+        },
+
+        registrationOwnerName() {
+            return this.registrationContext?.owner?.name
+                || this.registrationContext?.ownerSnapshot?.name
+                || '';
+        },
+
+        registrationOwnerDescription() {
+            return this.registrationContext?.ownerSnapshot?.shortDescription || '';
+        },
+
+        registrationOwnerAreas() {
+            const areas = this.registrationContext?.ownerSnapshot?.terms?.area;
+            if (!areas || !areas.length) {
+                return '';
+            }
+
+            return Array.isArray(areas) ? areas.join(', ') : String(areas);
+        },
     },
 
     mounted() {
@@ -131,6 +174,49 @@ app.component('opportunity-appeal-correction-evaluation', {
             const number = Number(value);
 
             return Number.isFinite(number) ? number : 0;
+        },
+
+        committeeEvaluationEntity(evaluation) {
+            if (!evaluation?.entityEvaluation) {
+                return null;
+            }
+
+            const key = evaluation.id ?? evaluation.entityEvaluation.id;
+            if (!key) {
+                return null;
+            }
+
+            if (!this._committeeEvaluationEntities[key]) {
+                const entity = new Entity('registrationevaluation');
+                entity.populate(evaluation.entityEvaluation);
+                this._committeeEvaluationEntities[key] = entity;
+            }
+
+            return this._committeeEvaluationEntities[key];
+        },
+
+        documentaryStatusColor(data) {
+            switch (data) {
+                case '1':
+                case 'valid':
+                    return 'success__color';
+                case '-1':
+                case 'invalid':
+                default:
+                    return 'danger__color';
+            }
+        },
+
+        documentaryStatusLabel(data) {
+            switch (data) {
+                case '1':
+                case 'valid':
+                    return this.text('field-valid');
+                case '-1':
+                case 'invalid':
+                default:
+                    return this.text('field-invalid');
+            }
         },
 
         /**

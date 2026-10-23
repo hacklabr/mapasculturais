@@ -64,6 +64,14 @@ $texts = [
     'scope count' => i::__('%s de %s critérios'),
     'select at least one criterion' => i::__('Selecione ao menos um critério'),
 
+    // CA-4 / CA-6: visibilidade no ambiente do corretor
+    'show appeal opinion' => i::__('Exibir parecer da Comissão de Recursos para o corretor'),
+    'show original valuer name' => i::__('Exibir nome do avaliador original para o corretor'),
+    'appeal opinion visible' => i::__('Parecer do recurso: visível'),
+    'appeal opinion hidden' => i::__('Parecer do recurso: oculto'),
+    'original valuer visible' => i::__('Nome do avaliador original: visível'),
+    'original valuer hidden' => i::__('Nome do avaliador original: oculto'),
+
     // CA-4: prazo da designação
     'deadline in past' => i::__('O prazo final precisa ser uma data futura.'),
     'deadline until' => i::__('O corretor poderá corrigir até'),

@@ -236,6 +236,9 @@ app.component('opportunity-appeal-correction-assignment', {
                 // F6: escopo inicia com TODOS os critérios (persiste null)
                 scopeCriteria: this.hasCriteriaSelector ? this.allCriteriaIds() : null,
                 scopeOpen: false,
+                // CA-4: visibilidade no ambiente do corretor (defaults da designação)
+                showAppealOpinion: true,
+                showOriginalValuerName: true,
                 endsAt: null,
                 endsAtTimeSet: false,
                 endsAtKey: 0,
@@ -451,16 +454,41 @@ app.component('opportunity-appeal-correction-assignment', {
             return ids;
         },
 
-        scopePayloadFrom(selected) {
-            if (!this.hasCriteriaSelector) {
-                return null;
+        /**
+         * Escopo persistido: critérios (quando restringidos) + flags de
+         * visibilidade do ambiente do corretor (CA-4 / CA-6).
+         * Sem critérios restritos e sem flags true → ainda envia as flags
+         * explícitas para o gestor poder desligar o nome do avaliador.
+         */
+        scopePayloadFrom(selected, visibility = {}) {
+            const scope = {
+                showAppealOpinion: !!visibility.showAppealOpinion,
+                showOriginalValuerName: !!visibility.showOriginalValuerName,
+            };
+
+            if (this.hasCriteriaSelector
+                && selected
+                && selected.length > 0
+                && selected.length < this.allCriteriaIds().length
+            ) {
+                scope.criteria = [...selected];
             }
 
-            if (!selected || selected.length >= this.allCriteriaIds().length) {
-                return null;
+            return scope;
+        },
+
+        reviewShowsAppealOpinion(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            return !!(scope && scope.showAppealOpinion);
+        },
+
+        reviewShowsOriginalValuerName(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            if (!scope || !Object.prototype.hasOwnProperty.call(scope, 'showOriginalValuerName')) {
+                return true;
             }
 
-            return { criteria: [...selected] };
+            return !!scope.showOriginalValuerName;
         },
 
         scopeInvalidFrom(selected) {
@@ -719,6 +747,8 @@ app.component('opportunity-appeal-correction-assignment', {
             // null); trocar para "todos marcados" volta a liberar integral.
             slot.substituteScopeCriteria = this.scopeCriteriaIds(review) ?? (this.hasCriteriaSelector ? this.allCriteriaIds() : null);
             slot.substituteScopeOpen = this.hasCriteriaSelector;
+            slot.substituteShowAppealOpinion = this.reviewShowsAppealOpinion(review);
+            slot.substituteShowOriginalValuerName = this.reviewShowsOriginalValuerName(review);
         },
 
         cancelSubstitution(slot) {
@@ -752,7 +782,10 @@ app.component('opportunity-appeal-correction-assignment', {
             try {
                 const response = await api.PATCH(url, {
                     correctorUser: this.normalizeId(slot.substituteUserId),
-                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria),
+                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria, {
+                        showAppealOpinion: slot.substituteShowAppealOpinion,
+                        showOriginalValuerName: slot.substituteShowOriginalValuerName,
+                    }),
                 });
 
                 if (!response.ok) {
@@ -1006,8 +1039,11 @@ app.component('opportunity-appeal-correction-assignment', {
                 correctorUser: this.normalizeId(slot.correctorUserId),
                 status: this.config.statusDesignated ?? 0,
                 correctionType: this.config.correctionTypeDefault || 'official',
-                // F6: null = correção integral (todos ou método sem critérios)
-                releasedScope: this.scopePayloadFrom(slot.scopeCriteria),
+                // F6 + CA-4: critérios (se restritos) + visibilidade do ambiente
+                releasedScope: this.scopePayloadFrom(slot.scopeCriteria, {
+                    showAppealOpinion: slot.showAppealOpinion,
+                    showOriginalValuerName: slot.showOriginalValuerName,
+                }),
                 // null = sem prazo (corretor pode corrigir a qualquer momento)
                 endsAt: this.toBackendDate(slot.endsAt),
             };

@@ -223,7 +223,11 @@ class AppealAssignmentApiTest extends TestCase
             'originalEvaluation' => $scenario['slotA']->id,
             'correctorUser' => $scenario['committeeUser']->id,
             'correctionType' => RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL,
-            'releasedScope' => json_encode(['criteria' => ['c-1'], 'showAppealOpinion' => true]),
+            'releasedScope' => json_encode([
+                'criteria' => ['c-1'],
+                'showAppealOpinion' => true,
+                'showOriginalValuerName' => false,
+            ]),
             'startsAt' => $starts_at,
             'endsAt' => $ends_at,
         ]);
@@ -239,7 +243,11 @@ class AppealAssignmentApiTest extends TestCase
         $this->assertEquals($scenario['slotA']->id, $review->originalEvaluation->id);
         $this->assertEquals($scenario['committeeUser']->id, $review->correctorUser->id);
         $this->assertEquals(RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL, $review->correctionType);
-        $this->assertEquals(['criteria' => ['c-1'], 'showAppealOpinion' => true], (array) $review->releasedScope);
+        $this->assertEquals([
+            'criteria' => ['c-1'],
+            'showAppealOpinion' => true,
+            'showOriginalValuerName' => false,
+        ], (array) $review->releasedScope);
         $this->assertEquals($starts_at . ':00', $review->startsAt->format('Y-m-d H:i:s'));
         $this->assertEquals($ends_at . ':00', $review->endsAt->format('Y-m-d H:i:s'));
 

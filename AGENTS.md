@@ -36,6 +36,11 @@ Monólito PHP 8.3 (Slim 4 + Doctrine ORM 2.16 + PostgreSQL/PostGIS) multi-instâ
 6. **Entidades se salvam por `Entity::save()`** — `em->persist()` cru pula o ciclo de domínio (revisão, pcache, hooks `save:*`).
 7. **Uploads por file groups registrados** — grupo não registrado é silenciosamente descartado (`ControllerUploads.php:85-87`).
 8. **Idioma**: docs em PT-BR; código/identificadores em EN; strings de UI via `i::__()`.
+9. **Sincronização obrigatória com upstream antes de iniciar feature** — este repositório (`hacklabr/mapasculturais`) é um fork de `mapasculturais/mapasculturais`. Toda branch de feature deve partir da base atualizada do **upstream oficial** (`mapasculturais/mapasculturais`). Antes de criar ou retomar uma feature, executar:
+   - `git remote add upstream https://github.com/mapasculturais/mapasculturais.git` se o remote `upstream` não existir;
+   - `git fetch upstream`;
+   - `git rebase upstream/<branch-base>` (ou `git merge upstream/<branch-base>` se o time optar por merge) sobre a branch-base (`develop` para features normais, `v7.8.X` para hotfixes de release).
+   Nunca iniciar desenvolvimento sobre uma base defasada.
 
 ## Estrutura essencial
 

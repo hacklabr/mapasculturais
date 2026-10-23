@@ -49,6 +49,26 @@ class Module extends \MapasCulturais\Module {
             $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
         });
 
+        // Corretor designado precisa ver o formulário da inscrição (mesmos campos
+        // que o avaliador original) para refazer a análise e corrigir a nota.
+        $app->hook('entity(Registration).canUser(view)', function ($user, &$result) use ($self) {
+            /** @var Registration $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorViewRegistration($this, $user);
+        });
+
+        $app->hook('entity(Registration).canUser(viewPrivateData)', function ($user, &$result) use ($self) {
+            /** @var Registration $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorViewRegistration($this, $user);
+        });
+
         // Aba "Correções designadas" em Minhas avaliações: ponto de entrada do corretor
         $app->hook('component(panel--evaluations-tabs).tabs:end', function () use ($app, $self) {
             /** @var \MapasCulturais\Themes\BaseV2\Theme $this */
@@ -69,6 +89,32 @@ class Module extends \MapasCulturais\Module {
             <mc-tab v-if="!isReportingPhase" label="<?= i::esc_attr__('Correções designadas') ?>" slug="appealCorrections" class="panel-evaluations">
                 <panel--appeal-correction-assignments></panel--appeal-correction-assignments>
             </mc-tab>
+            <?php
+        });
+
+        // Painel de controle: bloco "Correções designadas" junto às avaliações disponíveis
+        $app->hook('template(panel.index.panel-home-evaluations):after', function () use ($app, $self) {
+            /** @var \MapasCulturais\Themes\BaseV2\Theme $this */
+            if (!$self->isAppealScoreCorrectionEnabled() || $app->user->is('guest')) {
+                return;
+            }
+
+            $assignments_count = $app->repo(RegistrationAppealReview::class)->count([
+                'correctorUser' => $app->user->id,
+            ]);
+
+            if (!$assignments_count) {
+                return;
+            }
+
+            $this->import('panel--appeal-correction-assignments');
+            ?>
+            <panel--appeal-correction-assignments
+                carousel
+                available-only
+                hide-when-empty
+                title="<?= i::esc_attr__('Correções designadas') ?>"
+            ></panel--appeal-correction-assignments>
             <?php
         });
 
@@ -526,6 +572,31 @@ class Module extends \MapasCulturais\Module {
         }
 
         return false;
+    }
+
+    /**
+     * Corretor com designação (ativa ou já enviada) na inscrição pode ver o
+     * formulário — necessário para o embed `registrationevaluationtionformview`
+     * na página de correção.
+     */
+    public function canDesignatedCorrectorViewRegistration(Registration $registration, $user): bool
+    {
+        if (!$this->isAppealScoreCorrectionEnabled() || $user->is('guest')) {
+            return false;
+        }
+
+        $statuses = array_merge(
+            RegistrationAppealReview::getActiveStatuses(),
+            [RegistrationAppealReview::STATUS_SENT]
+        );
+
+        $count = App::i()->repo(RegistrationAppealReview::class)->count([
+            'registration' => $registration,
+            'correctorUser' => $user,
+            'status' => $statuses,
+        ]);
+
+        return $count > 0;
     }
 
     // ============================================================ //
