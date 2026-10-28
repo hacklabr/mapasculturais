@@ -146,6 +146,12 @@ app.component('opportunity-appeal-correction-evaluation', {
             return this.environment?.committeeOpinion?.method || '';
         },
 
+        committeeModalTitle() {
+            const number = this.environment?.registrationNumber || '';
+            const phase = this.environment?.opportunityName || this.text('committee-opinion-title');
+            return number ? `${phase} - ${number}` : phase;
+        },
+
         visibleForm() {
             return this.environment?.visibleForm || null;
         },

@@ -317,7 +317,9 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertEquals('continuous', $payload['committeeOpinion']['method']);
         $this->assertNotEmpty($payload['committeeOpinion']['evaluationsDetails']);
         $this->assertArrayHasKey('obs', $payload['committeeOpinion']['evaluationsDetails'][0]);
-        $this->assertArrayHasKey('valuer', $payload['committeeOpinion']['evaluationsDetails'][0]);
+        // Mesmo gate do "Exibir detalhamento": corretor sem @control e sem
+        // publishValuerNames não recebe nome do parecerista (só #sequencial).
+        $this->assertArrayNotHasKey('valuer', $payload['committeeOpinion']['evaluationsDetails'][0]);
     }
 
     function testOriginalValuerNamePresentByDefault(): void

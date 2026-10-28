@@ -181,181 +181,212 @@ $this->import('
             </template>
             <template #content>
                 <!--
-                    Mesma visão do "Exibir detalhamento" (um card por parecerista).
-                    Markup espelhado das parts */evaluations-details — sem importar
-                    evaluation-*-detail (o init.php deles assume view de inscrição).
+                    Mesmo comportamento do registration-results: botão
+                    "Exibir detalhamento" abre modal; nome do parecerista
+                    só aparece se o payload trouxer valuer (publishValuerNames
+                    / @control) — senão só o #sequencial.
                 -->
                 <div class="registration-results opportunity-appeal-correction-evaluation__committee-opinion">
-                    <div class="registration-results__content">
+                    <mc-modal
+                        :title="committeeModalTitle"
+                        classes="registration-results__modal registration-results__modal--with-chat">
+                        <template #default>
+                            <div class="registration-results__content">
 
-                        <!-- Técnico: consolidado + cards com pontuação -->
-                        <template v-if="committeeOpinionMethod === 'technical'">
-                            <div class="registration-results__card">
-                                <div class="registration-results__card-header">
-                                    <div class="registration-results__card-title">
-                                        <h4 class="bold"><?= i::__('Resultado Consolidado') ?></h4>
-                                    </div>
-                                    <div>
-                                        <p><label><?= i::__('Pontuação total: ') ?></label> <strong>{{ committeeRegistration.score }}</strong></p>
-                                        <p v-if="committeeRegistration.consolidatedDetails?.maxScore">
-                                            <label><?= i::__('Pontuação máxima: ') ?></label>
-                                            <strong>{{ committeeRegistration.consolidatedDetails.maxScore }}</strong>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div
-                                v-for="(evaluation, index) in committeeRegistration.evaluationsDetails"
-                                :key="evaluation.id || index"
-                                class="registration-results__card">
-                                <div class="registration-results__card-header">
-                                    <div class="registration-results__card-title">
-                                        <h4 class="registration-results__opinion-title bold">
-                                            <?= i::__('Parecerista: ') ?>
-                                            <template v-if="evaluation.valuer && evaluation.committeeSequentialNumber">
-                                                #{{ evaluation.committeeSequentialNumber }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
-                                            </template>
-                                            <template v-else-if="evaluation.valuer">
-                                                #{{ index + 1 }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
-                                            </template>
-                                            <template v-else-if="evaluation.committeeSequentialNumber">
-                                                #{{ evaluation.committeeSequentialNumber }}
-                                            </template>
-                                            <template v-else>#{{ index + 1 }}</template>
-                                        </h4>
-                                        <p v-if="committeeRegistration.consolidatedResult">
-                                            <label><?= i::__('Pontuação total: ') ?></label>
-                                            <strong>{{ committeeRegistration.consolidatedResult }}</strong>
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="registration-results__card-content">
-                                    <div class="registration-results__opinion registration-results__opinion--document">
-                                        <h5 class="registration-results__opinion-title bold"><?= i::__('Parecer') ?>:</h5>
-                                        <div class="registration-results__opinion-text">
-                                            <p>{{ evaluation.obs }}</p>
+                                <!-- Técnico: consolidado + cards com pontuação -->
+                                <template v-if="committeeOpinionMethod === 'technical'">
+                                    <div class="registration-results__card">
+                                        <div class="registration-results__card-header">
+                                            <div class="registration-results__card-title">
+                                                <h4 class="bold"><?= i::__('Resultado Consolidado') ?></h4>
+                                            </div>
+                                            <div>
+                                                <p><label><?= i::__('Pontuação total: ') ?></label> <strong>{{ committeeRegistration.score }}</strong></p>
+                                                <p v-if="committeeRegistration.consolidatedDetails?.maxScore">
+                                                    <label><?= i::__('Pontuação máxima: ') ?></label>
+                                                    <strong>{{ committeeRegistration.consolidatedDetails.maxScore }}</strong>
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div v-if="evaluation.scores?.length" class="registration-results__card-content">
-                                    <div class="registration-results__opinion registration-results__opinion--document">
-                                        <h5 class="registration-results__opinion-title bold"><?= i::__('Detalhamento da pontuação') ?>:</h5>
-                                        <ul>
-                                            <li v-for="section in evaluation.scores" :key="section.id || section.name">
-                                                {{ section.name }}: <strong>{{ section.score }}</strong>
-                                                <em>(<?= i::__('pontuação máxima') ?>: {{ section.maxScore }})</em>
+
+                                    <div
+                                        v-for="(evaluation, index) in committeeRegistration.evaluationsDetails"
+                                        :key="evaluation.id || index"
+                                        class="registration-results__card">
+                                        <div class="registration-results__card-header">
+                                            <div class="registration-results__card-title">
+                                                <h4
+                                                    v-if="evaluation.valuer && evaluation.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ evaluation.committeeSequentialNumber }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="evaluation.valuer"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="evaluation.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ evaluation.committeeSequentialNumber }}
+                                                </h4>
+                                                <h4 v-else class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }}
+                                                </h4>
+                                                <p v-if="committeeRegistration.consolidatedResult">
+                                                    <label><?= i::__('Pontuação total: ') ?></label>
+                                                    <strong>{{ committeeRegistration.consolidatedResult }}</strong>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="registration-results__card-content">
+                                            <div class="registration-results__opinion registration-results__opinion--document">
+                                                <h5 class="registration-results__opinion-title bold"><?= i::__('Parecer') ?>:</h5>
+                                                <div class="registration-results__opinion-text">
+                                                    <p>{{ evaluation.obs }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div v-if="evaluation.scores?.length" class="registration-results__card-content">
+                                            <div class="registration-results__opinion registration-results__opinion--document">
+                                                <h5 class="registration-results__opinion-title bold"><?= i::__('Detalhamento da pontuação') ?>:</h5>
                                                 <ul>
-                                                    <li v-for="cri in section.criteria" :key="cri.id">
-                                                        {{ cri.title }}: <strong>{{ cri.score }}</strong>
-                                                        <em>(<?= i::__('pontuação máxima') ?>: {{ cri.maxScore }})</em>
+                                                    <li v-for="section in evaluation.scores" :key="section.id || section.name">
+                                                        {{ section.name }}: <strong>{{ section.score }}</strong>
+                                                        <em>(<?= i::__('pontuação máxima') ?>: {{ section.maxScore }})</em>
+                                                        <ul>
+                                                            <li v-for="cri in section.criteria" :key="cri.id">
+                                                                {{ cri.title }}: <strong>{{ cri.score }}</strong>
+                                                                <em>(<?= i::__('pontuação máxima') ?>: {{ cri.maxScore }})</em>
+                                                            </li>
+                                                        </ul>
                                                     </li>
                                                 </ul>
-                                            </li>
-                                        </ul>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </template>
+                                </template>
 
-                        <!-- Documental -->
-                        <template v-else-if="committeeOpinionMethod === 'documentary'">
-                            <div
-                                v-for="(detail, index) in committeeRegistration.evaluationsDetails"
-                                :key="detail.id || index"
-                                class="registration-results__card">
-                                <div class="registration-results__card-header">
-                                    <div class="registration-results__card-title">
-                                        <h4 class="registration-results__opinion-title bold">
-                                            <?= i::__('Parecerista: ') ?>
-                                            <template v-if="detail.valuer && detail.committeeSequentialNumber">
-                                                #{{ detail.committeeSequentialNumber }} - ({{ detail.valuer.id }} - {{ detail.valuer.name }})
-                                            </template>
-                                            <template v-else-if="detail.valuer">
-                                                #{{ index + 1 }} - ({{ detail.valuer.id }} - {{ detail.valuer.name }})
-                                            </template>
-                                            <template v-else-if="detail.committeeSequentialNumber">
-                                                #{{ detail.committeeSequentialNumber }}
-                                            </template>
-                                            <template v-else>#{{ index + 1 }}</template>
-                                        </h4>
-                                        <p v-if="detail.evaluationResult != null">
-                                            <label><?= i::__('Resultado final: ') ?></label>
-                                            <strong :class="documentaryStatusColor(detail.evaluationResult)">
-                                                <mc-icon name="circle" :class="documentaryStatusColor(detail.evaluationResult)"></mc-icon>
-                                                {{ documentaryStatusLabel(detail.evaluationResult) }}
-                                            </strong>
-                                        </p>
-                                    </div>
-                                </div>
-                                <template v-for="(item, itemKey) in detail.evaluations" :key="itemKey">
-                                    <div v-if="itemKey !== 'valuer'" class="registration-results__card-content">
-                                        <div class="registration-results__opinion registration-results__opinion--document">
-                                            <div class="registration-results__opinion-text">
-                                                <p>
-                                                    <mc-icon name="circle" :class="documentaryStatusColor(item.evaluation)"></mc-icon>
-                                                    <strong :class="documentaryStatusColor(item.evaluation)">
-                                                        {{ documentaryStatusLabel(item.evaluation) }}
+                                <!-- Documental -->
+                                <template v-else-if="committeeOpinionMethod === 'documentary'">
+                                    <div
+                                        v-for="(detail, index) in committeeRegistration.evaluationsDetails"
+                                        :key="detail.id || index"
+                                        class="registration-results__card">
+                                        <div class="registration-results__card-header">
+                                            <div class="registration-results__card-title">
+                                                <h4
+                                                    v-if="detail.valuer && detail.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ detail.committeeSequentialNumber }} - ({{ detail.valuer.id }} - {{ detail.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="detail.valuer"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }} - ({{ detail.valuer.id }} - {{ detail.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="detail.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ detail.committeeSequentialNumber }}
+                                                </h4>
+                                                <h4 v-else class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }}
+                                                </h4>
+                                                <p v-if="detail.evaluationResult != null">
+                                                    <label><?= i::__('Resultado final: ') ?></label>
+                                                    <strong :class="documentaryStatusColor(detail.evaluationResult)">
+                                                        <mc-icon name="circle" :class="documentaryStatusColor(detail.evaluationResult)"></mc-icon>
+                                                        {{ documentaryStatusLabel(detail.evaluationResult) }}
                                                     </strong>
                                                 </p>
-                                                <p><strong>{{ item.label }}</strong></p>
-                                                <div v-if="item.obs">
-                                                    <h5 class="registration-results__opinion-title bold"><?= i::__('Parecer') ?>:</h5>
-                                                    <ul><li>{{ item.obs }}</li></ul>
+                                            </div>
+                                        </div>
+                                        <template v-for="(item, itemKey) in detail.evaluations" :key="itemKey">
+                                            <div v-if="itemKey !== 'valuer'" class="registration-results__card-content">
+                                                <div class="registration-results__opinion registration-results__opinion--document">
+                                                    <div class="registration-results__opinion-text">
+                                                        <p>
+                                                            <mc-icon name="circle" :class="documentaryStatusColor(item.evaluation)"></mc-icon>
+                                                            <strong :class="documentaryStatusColor(item.evaluation)">
+                                                                {{ documentaryStatusLabel(item.evaluation) }}
+                                                            </strong>
+                                                        </p>
+                                                        <p><strong>{{ item.label }}</strong></p>
+                                                        <div v-if="item.obs">
+                                                            <h5 class="registration-results__opinion-title bold"><?= i::__('Parecer') ?>:</h5>
+                                                            <ul><li>{{ item.obs }}</li></ul>
+                                                        </div>
+                                                        <div v-if="item.obs_items">
+                                                            <h5 class="registration-results__opinion-title bold"><?= i::__('Detalhamento') ?>:</h5>
+                                                            <ul><li>{{ item.obs_items }}</li></ul>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div v-if="item.obs_items">
-                                                    <h5 class="registration-results__opinion-title bold"><?= i::__('Detalhamento') ?>:</h5>
-                                                    <ul><li>{{ item.obs_items }}</li></ul>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <!-- Contínuo / simples / qualificação / fallback -->
+                                <template v-else>
+                                    <div
+                                        v-for="(evaluation, index) in committeeRegistration.evaluationsDetails"
+                                        :key="evaluation.id || index"
+                                        class="registration-results__card">
+                                        <div class="registration-results__card-header">
+                                            <div class="registration-results__card-title">
+                                                <h4
+                                                    v-if="evaluation.valuer && evaluation.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ evaluation.committeeSequentialNumber }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="evaluation.valuer"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
+                                                </h4>
+                                                <h4
+                                                    v-else-if="evaluation.committeeSequentialNumber"
+                                                    class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ evaluation.committeeSequentialNumber }}
+                                                </h4>
+                                                <h4 v-else class="registration-results__opinion-title bold">
+                                                    <?= i::__('Parecerista: ') ?> #{{ index + 1 }}
+                                                </h4>
+                                            </div>
+                                        </div>
+                                        <div class="registration-results__card-content">
+                                            <div class="registration-results__opinion registration-results__opinion--document">
+                                                <h5 class="registration-results__opinion-title bold"><?= i::__('Justificativa') ?>:</h5>
+                                                <div class="registration-results__opinion-text">
+                                                    <p>{{ evaluation.obs }}</p>
+                                                </div>
+                                                <div v-if="committeeEvaluationEntity(evaluation)" class="registration-results__opinion-attachment">
+                                                    <entity-file
+                                                        :entity="committeeEvaluationEntity(evaluation)"
+                                                        group-name="evaluationAttachment"
+                                                        classes="col-12">
+                                                    </entity-file>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </template>
+
                             </div>
                         </template>
 
-                        <!-- Contínuo / simples / qualificação / fallback: parecerista + justificativa -->
-                        <template v-else>
-                            <div
-                                v-for="(evaluation, index) in committeeRegistration.evaluationsDetails"
-                                :key="evaluation.id || index"
-                                class="registration-results__card">
-                                <div class="registration-results__card-header">
-                                    <div class="registration-results__card-title">
-                                        <h4 class="registration-results__opinion-title bold">
-                                            <?= i::__('Parecerista: ') ?>
-                                            <template v-if="evaluation.valuer && evaluation.committeeSequentialNumber">
-                                                #{{ evaluation.committeeSequentialNumber }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
-                                            </template>
-                                            <template v-else-if="evaluation.valuer">
-                                                #{{ index + 1 }} - ({{ evaluation.valuer.id }} - {{ evaluation.valuer.name }})
-                                            </template>
-                                            <template v-else-if="evaluation.committeeSequentialNumber">
-                                                #{{ evaluation.committeeSequentialNumber }}
-                                            </template>
-                                            <template v-else>#{{ index + 1 }}</template>
-                                        </h4>
-                                    </div>
-                                </div>
-                                <div class="registration-results__card-content">
-                                    <div class="registration-results__opinion registration-results__opinion--document">
-                                        <h5 class="registration-results__opinion-title bold"><?= i::__('Justificativa') ?>:</h5>
-                                        <div class="registration-results__opinion-text">
-                                            <p>{{ evaluation.obs }}</p>
-                                        </div>
-                                        <div v-if="committeeEvaluationEntity(evaluation)" class="registration-results__opinion-attachment">
-                                            <entity-file
-                                                :entity="committeeEvaluationEntity(evaluation)"
-                                                group-name="evaluationAttachment"
-                                                classes="col-12">
-                                            </entity-file>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <template #button="modal">
+                            <button
+                                type="button"
+                                class="button button--primary button--sm button--large"
+                                @click="modal.open()">
+                                <?= i::__('Exibir detalhamento') ?>
+                            </button>
                         </template>
-
-                    </div>
+                    </mc-modal>
                 </div>
             </template>
         </mc-card>

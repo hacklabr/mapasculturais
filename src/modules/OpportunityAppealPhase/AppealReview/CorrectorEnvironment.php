@@ -691,6 +691,9 @@ class CorrectorEnvironment
                 $detail['entityEvaluation'] = $detail['entityEvaluation']->jsonSerialize();
             }
 
+            // Mesmo gate do "Exibir detalhamento": nome do parecerista só
+            // com @control na oportunidade ou publishValuerNames no EMC;
+            // senão só committeeSequentialNumber (número sequencial).
             if ($emc) {
                 OpportunitiesModule::enrichEvaluationDetailWithValuerInfo(
                     $detail,
@@ -699,12 +702,6 @@ class CorrectorEnvironment
                     $evaluation,
                     $app
                 );
-            }
-
-            // Parecer liberado ao corretor: nomes da comissão sempre visíveis
-            // (equivalente ao detalhamento com publishValuerNames / @control).
-            if (empty($detail['valuer'])) {
-                $detail['valuer'] = $evaluation->user->profile->simplify('id,name,singleUrl');
             }
 
             $evaluations_details[] = $detail;
