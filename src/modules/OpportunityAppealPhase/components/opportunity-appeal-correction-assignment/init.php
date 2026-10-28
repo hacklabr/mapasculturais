@@ -64,6 +64,7 @@
  */
 
 use MapasCulturais\Entities\Opportunity;
+use MapasCulturais\i;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 $config = [
@@ -102,6 +103,11 @@ $config = [
     // total} — presente somente para technical/documentary com itens. Demais
     // métodos: null (designação sem seletor; releasedScope nulo = tudo).
     'criteriaCatalogs' => new stdClass(),
+
+    // Campos do formulário liberáveis ao corretor (mesmo espírito do
+    // "Abrir lista de campos" do avaliador): agentsSummary/spaceSummary +
+    // registrationFieldConfigurations/registrationFileConfigurations das fases.
+    'formFieldsCatalogs' => new stdClass(),
 ];
 
 $requested_entity = $this->controller->requestedEntity ?? null;
@@ -253,6 +259,63 @@ if ($opportunity instanceof Opportunity && $opportunity->status === Opportunity:
         }
 
         $config['criteriaCatalogs']->{$main_phase_id} = $criteria_catalog;
+
+        // Catálogo de campos do formulário (visão do corretor) —
+        // mesmo formato visual do fields-visible-evaluators (#id + título).
+        $form_items = [
+            [
+                'id' => 'agentsSummary',
+                'label' => (string) i::__('Agente proponente'),
+                'numericId' => null,
+                'kind' => 'text',
+            ],
+            [
+                'id' => 'spaceSummary',
+                'label' => (string) i::__('Espaço vinculado'),
+                'numericId' => null,
+                'kind' => 'text',
+            ],
+        ];
+
+        $seen_field_ids = ['agentsSummary' => true, 'spaceSummary' => true];
+        $phases_for_fields = $main_phase->allPhases ?: [$main_phase];
+
+        foreach ($phases_for_fields as $phase) {
+            foreach ($phase->registrationFieldConfigurations as $field) {
+                $field_id = (string) $field->getFieldName();
+                if (isset($seen_field_ids[$field_id])) {
+                    continue;
+                }
+
+                $seen_field_ids[$field_id] = true;
+                $form_items[] = [
+                    'id' => $field_id,
+                    'label' => (string) ($field->title ?: $field_id),
+                    'numericId' => (int) $field->id,
+                    'kind' => 'text',
+                ];
+            }
+
+            foreach ($phase->registrationFileConfigurations as $file) {
+                $file_id = (string) $file->getFileGroupName();
+                if (isset($seen_field_ids[$file_id])) {
+                    continue;
+                }
+
+                $seen_field_ids[$file_id] = true;
+                $form_items[] = [
+                    'id' => $file_id,
+                    'label' => (string) ($file->title ?: $file_id),
+                    'numericId' => (int) $file->id,
+                    'kind' => 'file',
+                ];
+            }
+        }
+
+        $config['formFieldsCatalogs']->{$main_phase_id} = [
+            'items' => $form_items,
+            'total' => count($form_items),
+        ];
 
         // Tabela da fase de recurso (chaveada pela própria fase de recurso)
         $config['appealContexts']->{$appeal_phase_id} = ['mainPhaseId' => $main_phase_id];

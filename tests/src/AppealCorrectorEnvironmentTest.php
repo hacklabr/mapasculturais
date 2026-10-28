@@ -202,13 +202,74 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->login($scenario['corrector']);
         $payload = $builder->build($scenario['review']);
         $this->assertEquals($scenario['review']->id, $payload['assignmentId']);
-        $this->assertArrayHasKey('registrationContext', $payload);
-        $this->assertEquals($scenario['registration']->id, $payload['registrationContext']['id']);
-        $this->assertEquals($scenario['registration']->number, $payload['registrationContext']['number']);
+        $this->assertArrayHasKey('visibleForm', $payload);
+        $this->assertEquals($scenario['registration']->number, $payload['visibleForm']['number']);
+        $this->assertNotNull($payload['visibleForm']['agentsSummary']);
 
         $this->login($scenario['outsider']);
         $this->expectException(PermissionDenied::class);
         $builder->build($scenario['review']);
+    }
+
+    function testVisibleFormHonorsReleasedFormFields(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->disableAccessControl();
+
+        $scope = (array) ($scenario['review']->releasedScope ?: []);
+        $scope['formFields'] = ['spaceSummary'];
+        $scenario['review']->releasedScope = (object) $scope;
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertNull($payload['visibleForm']['agentsSummary']);
+        $this->assertNull($payload['visibleForm']['spaceSummary']);
+    }
+
+    function testVisibleFormExposesFilledRegistrationFieldValues(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $registration = $scenario['registration'];
+        $opportunity = $registration->opportunity;
+
+        $app->disableAccessControl();
+
+        $step = new \MapasCulturais\Entities\RegistrationStep();
+        $step->opportunity = $opportunity;
+        $step->name = '';
+        $step->save(true);
+
+        $field = new \MapasCulturais\Entities\RegistrationFieldConfiguration();
+        $field->owner = $opportunity;
+        $field->title = 'Campo regressão';
+        $field->fieldType = 'text';
+        $field->required = false;
+        $field->step = $step;
+        $field->save(true);
+
+        $field_id = $field->getFieldName();
+        $opportunity->registerRegistrationMetadata();
+        $registration->$field_id = 'valor-preenchido';
+        $registration->save(true);
+
+        $scope = (array) ($scenario['review']->releasedScope ?: []);
+        $scope['formFields'] = [$field_id];
+        $scenario['review']->releasedScope = (object) $scope;
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertNull($payload['visibleForm']['agentsSummary']);
+        $this->assertCount(1, $payload['visibleForm']['fields']);
+        $this->assertEquals($field_id, $payload['visibleForm']['fields'][0]['id']);
+        $this->assertEquals('valor-preenchido', $payload['visibleForm']['fields'][0]['value']);
     }
 
     function testReturnsOnlyDesignatedSlotCriteria(): void
@@ -221,7 +282,8 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $original = (array) $payload['originalEvaluation'];
         $this->assertArrayHasKey('c-1', $original);
         $this->assertArrayNotHasKey('c-2', $original);
-        $this->assertArrayNotHasKey('obs', $original);
+        // Parecer (obs) não é critério: permanece liberado mesmo com escopo parcial.
+        $this->assertArrayHasKey('obs', $original);
         $this->assertEquals(4.0, (float) $original['c-1']);
 
         $draft = (array) $payload['draft'];
@@ -466,7 +528,9 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $body = (string) $app->response->getBody();
         $this->assertStringContainsString('opportunity-appeal-correction-evaluation', $body);
         $this->assertStringContainsString((string) $scenario['review']->id, $body);
-        $this->assertStringContainsString('registrationevaluationtionformview', $body);
+        // Texto com acento chega unicode-escapado em $TEMPLATES; assertar trecho ASCII.
+        $this->assertStringContainsString('Campos liberados pelo gestor', $body);
+        $this->assertStringContainsString('opportunity-appeal-correction-evaluation__registration', $body);
     }
 
     function testDesignatedCorrectorCanViewRegistrationForm(): void

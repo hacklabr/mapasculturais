@@ -35,7 +35,7 @@ $this->import('
             </div>
 
             <div v-if="!loading && slots.length" class="opportunity-appeal-correction-assignment__header">
-                <div><?= i::__('Avaliação (slot)') ?></div>
+                <div><?= i::__('Avaliação') ?></div>
                 <div><?= i::__('Corretor designado') ?></div>
                 <div><?= i::__('Acompanhamento') ?></div>
             </div>
@@ -187,6 +187,74 @@ $this->import('
                             </div>
                         </div>
 
+                        <!-- Campos do formulário: espelha fields-visible-evaluators -->
+                        <div v-if="slot.checked && hasFormFieldsSelector" class="opportunity-appeal-correction-assignment__scope">
+                            <mc-modal
+                                classes="modalEmbedTools opportunity-appeal-correction-assignment__fields-modal"
+                                :title="text('form fields modal title')">
+                                <template #default>
+                                    <div class="fields-visible-evaluators opportunity-appeal-correction-assignment__fields-picker">
+                                        <p class="opportunity-appeal-correction-assignment__slot-hint">
+                                            {{ text('form fields modal subtitle') }}
+                                        </p>
+
+                                        <div class="fields-visible-evaluators__search-wrapper field--horizontal">
+                                            <label class="semibold">{{ text('form fields filter') }}</label>
+                                            <div class="fields-visible-evaluators__search field">
+                                                <input type="text" v-model="formFieldsSearchQuery">
+                                                <small>{{ text('form fields search hint') }}</small>
+                                            </div>
+                                        </div>
+
+                                        <div class="fields-visible-evaluators__content">
+                                            <div class="fields-visible-evaluators__fields field">
+                                                <div class="fields-visible-evaluators__field__select-all field">
+                                                    <input
+                                                        type="checkbox"
+                                                        :id="'form-fields-all-' + slot.id"
+                                                        :checked="slotFormFieldsCount(slot) === formFieldsCatalog.total"
+                                                        @change="toggleSelectAllFormFields(slot)">
+                                                    <label :for="'form-fields-all-' + slot.id">{{ text('select all form fields') }}</label>
+                                                </div>
+
+                                                <div
+                                                    v-for="item in filteredFormFields"
+                                                    :key="item.id"
+                                                    class="fields-visible-evaluators__field field">
+                                                    <label :for="'form-field-' + slot.id + '-' + item.id">
+                                                        <mc-icon :name="formFieldIcon(item)"></mc-icon>
+                                                        <input
+                                                            type="checkbox"
+                                                            :id="'form-field-' + slot.id + '-' + item.id"
+                                                            :value="item.id"
+                                                            v-model="slot.formFields">
+                                                        <span v-if="item.numericId">#{{ item.numericId }}</span>
+                                                        <div class="fields-visible-evaluators__field__title">
+                                                            <span>{{ item.label }}</span>
+                                                            <small>{{ item.id }}</small>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template #button="modal">
+                                    <button
+                                        type="button"
+                                        class="button button--bg button--primarylight"
+                                        @click="openFormFieldsModal(modal)">
+                                        {{ text('open form fields list') }}
+                                        ({{ slotFormFieldsCount(slot) }}/{{ formFieldsCatalog.total }})
+                                    </button>
+                                </template>
+                            </mc-modal>
+
+                            <div v-if="formFieldsInvalidFrom(slot.formFields)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                {{ text('select at least one form field') }}
+                            </div>
+                        </div>
+
                         <!-- CA-4 / CA-6: o que o corretor pode ver no ambiente -->
                         <div v-if="slot.checked" class="opportunity-appeal-correction-assignment__visibility">
                             <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'show-opinion-' + slot.id">
@@ -248,6 +316,11 @@ $this->import('
                             <span>{{ reviewScopeLabel(reviewForSlot(slot)) }}</span>
                         </div>
 
+                        <div v-if="hasFormFieldsSelector" class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="list"></mc-icon>
+                            <span>{{ reviewFormFieldsLabel(reviewForSlot(slot)) }}</span>
+                        </div>
+
                         <!-- F5 (#45): gestão de designação ativa (substituir/cancelar) — únicos controles ativos da linha -->
                         <div v-if="canManageReview(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__actions">
                             <button
@@ -280,7 +353,7 @@ $this->import('
                                     </button>
                                 </template>
                                 <template #message>
-                                    <?= i::__('Tem certeza que deseja cancelar esta designação? O slot voltará a ficar disponível para nova designação.') ?>
+                                    <?= i::__('Tem certeza que deseja cancelar esta designação? Esta avaliação voltará a ficar disponível para nova designação.') ?>
                                 </template>
                             </mc-confirm-button>
                         </div>
@@ -480,6 +553,76 @@ $this->import('
                                     <div v-if="scopeInvalidFrom(slot.substituteScopeCriteria)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
                                         {{ text('select at least one criterion') }}
                                     </div>
+                                </div>
+                            </div>
+
+                            <div v-if="hasFormFieldsSelector" class="opportunity-appeal-correction-assignment__scope">
+                                <mc-modal
+                                    classes="modalEmbedTools opportunity-appeal-correction-assignment__fields-modal"
+                                    :title="text('form fields modal title')">
+                                    <template #default>
+                                        <div class="fields-visible-evaluators opportunity-appeal-correction-assignment__fields-picker">
+                                            <p class="opportunity-appeal-correction-assignment__slot-hint">
+                                                {{ text('form fields modal subtitle') }}
+                                            </p>
+
+                                            <div class="fields-visible-evaluators__search-wrapper field--horizontal">
+                                                <label class="semibold">{{ text('form fields filter') }}</label>
+                                                <div class="fields-visible-evaluators__search field">
+                                                    <input type="text" v-model="formFieldsSearchQuery" :disabled="slot.substituting">
+                                                    <small>{{ text('form fields search hint') }}</small>
+                                                </div>
+                                            </div>
+
+                                            <div class="fields-visible-evaluators__content">
+                                                <div class="fields-visible-evaluators__fields field">
+                                                    <div class="fields-visible-evaluators__field__select-all field">
+                                                        <input
+                                                            type="checkbox"
+                                                            :id="'sub-form-fields-all-' + slot.id"
+                                                            :checked="(slot.substituteFormFields || []).length === formFieldsCatalog.total"
+                                                            :disabled="slot.substituting"
+                                                            @change="toggleSelectAllFormFields(slot, 'substituteFormFields')">
+                                                        <label :for="'sub-form-fields-all-' + slot.id">{{ text('select all form fields') }}</label>
+                                                    </div>
+
+                                                    <div
+                                                        v-for="item in filteredFormFields"
+                                                        :key="item.id"
+                                                        class="fields-visible-evaluators__field field">
+                                                        <label :for="'sub-form-field-' + slot.id + '-' + item.id">
+                                                            <mc-icon :name="formFieldIcon(item)"></mc-icon>
+                                                            <input
+                                                                type="checkbox"
+                                                                :id="'sub-form-field-' + slot.id + '-' + item.id"
+                                                                :value="item.id"
+                                                                v-model="slot.substituteFormFields"
+                                                                :disabled="slot.substituting">
+                                                            <span v-if="item.numericId">#{{ item.numericId }}</span>
+                                                            <div class="fields-visible-evaluators__field__title">
+                                                                <span>{{ item.label }}</span>
+                                                                <small>{{ item.id }}</small>
+                                                            </div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template #button="modal">
+                                        <button
+                                            type="button"
+                                            class="button button--bg button--primarylight"
+                                            :disabled="slot.substituting"
+                                            @click="openFormFieldsModal(modal)">
+                                            {{ text('open form fields list') }}
+                                            ({{ (slot.substituteFormFields || []).length }}/{{ formFieldsCatalog.total }})
+                                        </button>
+                                    </template>
+                                </mc-modal>
+
+                                <div v-if="formFieldsInvalidFrom(slot.substituteFormFields)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                    {{ text('select at least one form field') }}
                                 </div>
                             </div>
 

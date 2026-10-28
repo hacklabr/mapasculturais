@@ -447,7 +447,7 @@ class Module extends \MapasCulturais\Module {
 
             $review = RegistrationAppealReview::findActiveForEvaluationAndUser($slot, $app->user);
             if (!$review) {
-                $this->errorJson(i::__('Nenhuma designação ativa de correção para este slot'), 403);
+                $this->errorJson(i::__('Nenhuma designação ativa de correção para esta avaliação'), 403);
             }
 
             $data = $this->data['evaluationData'] ?? $this->data['correctedValue'] ?? null;

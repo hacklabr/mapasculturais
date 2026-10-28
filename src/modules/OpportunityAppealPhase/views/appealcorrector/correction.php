@@ -13,7 +13,6 @@ $this->layout = 'panel';
 $this->import('
     mc-icon
     opportunity-appeal-correction-evaluation
-    v1-embed-tool
 ');
 ?>
 

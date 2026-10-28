@@ -102,6 +102,11 @@ app.component('opportunity-appeal-correction-evaluation', {
             return parseFloat(result.toFixed(2));
         },
 
+        originalOpinion() {
+            const value = this.environment?.originalEvaluation?.obs;
+            return (value === null || value === undefined || value === '') ? '' : String(value);
+        },
+
         statusLabel() {
             const labels = {
                 designated: this.text('status-designated'),
@@ -141,22 +146,36 @@ app.component('opportunity-appeal-correction-evaluation', {
             return this.environment?.committeeOpinion?.method || '';
         },
 
-        registrationContext() {
-            return this.environment?.registrationContext || null;
+        visibleForm() {
+            return this.environment?.visibleForm || null;
+        },
+
+        hasVisibleFormContent() {
+            const form = this.visibleForm;
+            if (!form) {
+                return false;
+            }
+
+            return !!(
+                form.agentsSummary
+                || form.spaceSummary?.length
+                || form.fields?.length
+                || form.files?.length
+            );
         },
 
         registrationOwnerName() {
-            return this.registrationContext?.owner?.name
-                || this.registrationContext?.ownerSnapshot?.name
+            return this.visibleForm?.agentsSummary?.owner?.name
+                || this.visibleForm?.agentsSummary?.ownerSnapshot?.name
                 || '';
         },
 
         registrationOwnerDescription() {
-            return this.registrationContext?.ownerSnapshot?.shortDescription || '';
+            return this.visibleForm?.agentsSummary?.ownerSnapshot?.shortDescription || '';
         },
 
         registrationOwnerAreas() {
-            const areas = this.registrationContext?.ownerSnapshot?.terms?.area;
+            const areas = this.visibleForm?.agentsSummary?.ownerSnapshot?.terms?.area;
             if (!areas || !areas.length) {
                 return '';
             }
@@ -221,7 +240,7 @@ app.component('opportunity-appeal-correction-evaluation', {
 
         /**
          * F7: garante a forma do formData por método — documental precisa de
-         * {evaluation, obs} por campo liberado; simples precisa de status/obs.
+         * {evaluation, obs} por campo liberado; técnico/simples precisam de obs.
          */
         initFormDataByMethod() {
             if (this.isDocumentary) {
@@ -234,7 +253,7 @@ app.component('opportunity-appeal-correction-evaluation', {
                         ...(current && typeof current === 'object' ? current : {}),
                     };
                 }
-            } else if (this.isSimple) {
+            } else if (this.isSimple || this.isTechnical) {
                 this.formData.data.status = this.formData.data.status ?? '';
                 this.formData.data.obs = this.formData.data.obs ?? '';
             }

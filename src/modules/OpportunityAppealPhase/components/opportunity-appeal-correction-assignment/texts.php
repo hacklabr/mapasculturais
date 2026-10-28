@@ -14,7 +14,7 @@ $texts = [
     // linha por slot
     'correct this score' => i::__('Corrigir esta nota'),
     'select corrector' => i::__('Selecione o corretor'),
-    'slot owner tag' => i::__('avaliador do slot'),
+    'slot owner tag' => i::__('avaliador original'),
     'committee tag' => i::__('Comissão de Recursos'),
     'already designated' => i::__('Já designado'),
     'eligible context required' => i::__('A designação de corretores exige uma fase de avaliação técnica com fase de recurso ativa e comissão configurada.'),
@@ -28,7 +28,7 @@ $texts = [
     'sent at' => i::__('Enviada em'),
     'last sent at' => i::__('Último envio em'),
     'no designation' => i::__('sem designação'),
-    'progress summary' => i::__('%s de %s slots com designação · %s enviadas'),
+    'progress summary' => i::__('%s de %s avaliações com designação · %s enviadas'),
 
     // ações e mensagens
     'save' => i::__('Salvar designações'),
@@ -63,6 +63,18 @@ $texts = [
     'all criteria released' => i::__('todos liberados'),
     'scope count' => i::__('%s de %s critérios'),
     'select at least one criterion' => i::__('Selecione ao menos um critério'),
+
+    // Campos do formulário liberados ao corretor (espelha "Abrir lista de campos")
+    'form fields scope' => i::__('Campos do formulário visíveis'),
+    'open form fields list' => i::__('Abrir lista de campos'),
+    'form fields modal title' => i::__('Campos visíveis para o corretor'),
+    'form fields modal subtitle' => i::__('Defina quais campos do formulário o corretor designado poderá consultar.'),
+    'form fields filter' => i::__('Filtrar campo'),
+    'form fields search hint' => i::__('Pesquise pelo título ou pelo ID'),
+    'all form fields released' => i::__('todos os campos liberados'),
+    'form fields count' => i::__('%s de %s campos'),
+    'select at least one form field' => i::__('Selecione ao menos um campo do formulário'),
+    'select all form fields' => i::__('Selecionar todos os campos'),
 
     // CA-4 / CA-6: visibilidade no ambiente do corretor
     'show appeal opinion' => i::__('Exibir parecer da Comissão de Recursos para o corretor'),

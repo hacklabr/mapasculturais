@@ -15,8 +15,11 @@
 
 @media (min-width: 801px) {
     .opportunity-appeal-correction-assignment .modal-content {
-        min-width: 45rem;
-        max-width: 45rem;
+        /* Modal largo: Acompanhamento precisa de espaço para prazo,
+           escopo, lista de campos, visibilidade e ações. */
+        min-width: min(80rem, 96vw);
+        max-width: min(80rem, 96vw);
+        width: min(80rem, 96vw);
     }
 }
 
@@ -40,8 +43,9 @@
 
 .opportunity-appeal-correction-assignment__header {
     display: grid;
-    gap: 1rem;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.5rem;
+    /* Slot | Corretor | Acompanhamento (prioridade de largura) */
+    grid-template-columns: minmax(10rem, .7fr) minmax(13rem, .9fr) minmax(26rem, 1.7fr);
     font-size: .75rem;
     font-weight: 600;
     letter-spacing: .02em;
@@ -56,9 +60,16 @@
     border: 1px solid var(--mc-gray-300);
     border-radius: var(--mc-border-radius-sm);
     display: grid;
-    gap: 1rem;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
-    padding: .75rem;
+    gap: 1.5rem;
+    grid-template-columns: minmax(10rem, .7fr) minmax(13rem, .9fr) minmax(26rem, 1.7fr);
+    padding: 1rem 1.25rem;
+}
+
+.opportunity-appeal-correction-assignment__slot-status {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    min-width: 0;
 }
 
 .opportunity-appeal-correction-assignment__slot--disabled {
@@ -171,12 +182,17 @@
 }
 
 .opportunity-appeal-correction-assignment__status-detail {
-    align-items: center;
+    align-items: flex-start;
     display: flex;
-    font-size: .75rem;
-    gap: .5rem;
-    margin-top: .25rem;
-    opacity: .7;
+    font-size: .8125rem;
+    gap: .45rem;
+    line-height: 1.4;
+    opacity: .8;
+}
+
+.opportunity-appeal-correction-assignment__status-detail > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .opportunity-appeal-correction-assignment__status-detail--empty {
@@ -268,6 +284,53 @@
     max-height: 16rem;
     overflow-y: auto;
     padding: .5rem;
+}
+
+/*
+ * Nested modal de campos: espelha fields-visible-evaluators + modalEmbedTools
+ * (largura generosa para dezenas de campos com títulos longos).
+ */
+.opportunity-appeal-correction-assignment__fields-modal .modal-content {
+    max-width: min(73rem, 80vw);
+    min-width: min(36rem, 94vw);
+    width: min(73rem, 80vw);
+}
+
+.opportunity-appeal-correction-assignment__fields-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.opportunity-appeal-correction-assignment__fields-picker .fields-visible-evaluators__fields {
+    max-height: min(28rem, 55vh);
+    overflow: auto;
+}
+
+.opportunity-appeal-correction-assignment__fields-picker .fields-visible-evaluators__field label {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .75rem;
+    max-width: 100%;
+    width: 100%;
+}
+
+.opportunity-appeal-correction-assignment__fields-picker .fields-visible-evaluators__field__title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.opportunity-appeal-correction-assignment__fields-picker .fields-visible-evaluators__field__title span {
+    display: block;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.opportunity-appeal-correction-assignment__fields-picker .fields-visible-evaluators__field__title small {
+    color: var(--mc-low-500);
+    display: block;
 }
 
 .opportunity-appeal-correction-assignment__scope-section {

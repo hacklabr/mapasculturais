@@ -133,7 +133,7 @@ class RegistrationAppealReview extends EntityController
         ]);
 
         if ($active_reviews) {
-            $this->errorJson(i::__('Já existe uma designação ativa para este slot. Substitua ou conclua a designação existente antes de criar outra.'), 400);
+            $this->errorJson(i::__('Já existe uma designação ativa para esta avaliação. Substitua ou conclua a designação existente antes de criar outra.'), 400);
         }
 
         $correction_type = (string) ($data['correctionType'] ?? ReviewEntity::CORRECTION_TYPE_OFFICIAL);
@@ -281,7 +281,7 @@ class RegistrationAppealReview extends EntityController
         ]);
 
         if ($other_active) {
-            $this->errorJson(i::__('Já existe uma designação ativa para este slot. Conclua ou cancele essa designação antes de reabrir a correção enviada.'), 400);
+            $this->errorJson(i::__('Já existe uma designação ativa para esta avaliação. Conclua ou cancele essa designação antes de reabrir a correção enviada.'), 400);
         }
 
         $data = is_array($this->postData) ? $this->postData : [];
@@ -387,11 +387,11 @@ class RegistrationAppealReview extends EntityController
         );
 
         if (!$eligible_ids) {
-            $this->errorJson(i::__('Este slot não admite designação de correção: exige fase principal com método técnico e fase de recurso ativa com Comissão de Recursos.'), 400);
+            $this->errorJson(i::__('Esta avaliação não admite designação de correção: exige fase principal com método técnico e fase de recurso ativa com Comissão de Recursos.'), 400);
         }
 
         if (!in_array((int) $corrector->id, $eligible_ids, true)) {
-            $this->errorJson(i::__('Corretor inelegível para este slot (CA-3): apenas o dono da avaliação original ou membros da Comissão de Recursos podem ser designados.'), 400);
+            $this->errorJson(i::__('Corretor inelegível para esta avaliação (CA-3): apenas o dono da avaliação original ou membros da Comissão de Recursos podem ser designados.'), 400);
         }
     }
 
@@ -418,7 +418,7 @@ class RegistrationAppealReview extends EntityController
 
         if (array_key_exists('originalEvaluation', $data)) {
             if ($this->resolveIdParam($data['originalEvaluation']) !== (int) $review->originalEvaluation->id) {
-                $this->errorJson(i::__('O campo originalEvaluation identifica o slot e não pode ser alterado. Crie uma nova designação.'), 400);
+                $this->errorJson(i::__('O campo originalEvaluation identifica a avaliação original e não pode ser alterado. Crie uma nova designação.'), 400);
             }
 
             unset($data['originalEvaluation']);
@@ -597,6 +597,13 @@ class RegistrationAppealReview extends EntityController
 
         if ($criteria !== null && count((array) $criteria) === 0) {
             $this->errorJson(i::__('O escopo de critérios não pode ser vazio: selecione ao menos um critério ou envie a designação sem restrição (releasedScope nulo libera todos).'), 400);
+        }
+
+        if (property_exists($scope, 'formFields')
+            && $scope->formFields !== null
+            && count((array) $scope->formFields) === 0
+        ) {
+            $this->errorJson(i::__('O escopo de campos do formulário não pode ser vazio: selecione ao menos um campo ou omita formFields para liberar todos.'), 400);
         }
 
         return $scope;

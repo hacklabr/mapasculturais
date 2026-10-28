@@ -45,6 +45,7 @@ app.component('opportunity-appeal-correction-assignment', {
             reviews: [],
             loading: false,
             saving: false,
+            formFieldsSearchQuery: '',
         };
     },
 
@@ -98,6 +99,45 @@ app.component('opportunity-appeal-correction-assignment', {
                 && this.allCriteriaIds().length > 0;
         },
 
+        /**
+         * Catálogo de campos do formulário liberáveis ao corretor
+         * (agentsSummary, spaceSummary, campos e anexos das fases).
+         */
+        formFieldsCatalog() {
+            const catalogs = this.config.formFieldsCatalogs || {};
+            return this.opportunityId != null
+                ? catalogs[this.opportunityId] ?? null
+                : null;
+        },
+
+        hasFormFieldsSelector() {
+            const catalog = this.formFieldsCatalog;
+            return !!catalog
+                && (catalog.total ?? 0) > 0
+                && this.allFormFieldIds().length > 0;
+        },
+
+        /**
+         * Lista filtrada no modal (mesmo filtro do fields-visible-evaluators:
+         * título ou ID).
+         */
+        filteredFormFields() {
+            const items = this.formFieldsCatalog?.items || [];
+            const query = (this.formFieldsSearchQuery || '').toLowerCase().trim();
+
+            if (!query) {
+                return items;
+            }
+
+            return items.filter(item => {
+                const label = String(item.label || '').toLowerCase();
+                const id = String(item.id || '').toLowerCase();
+                const numeric = item.numericId != null ? String(item.numericId) : '';
+
+                return label.includes(query) || id.includes(query) || numeric.includes(query);
+            });
+        },
+
         markedSlots() {
             return this.slots.filter(slot => slot.checked);
         },
@@ -115,6 +155,11 @@ app.component('opportunity-appeal-correction-assignment', {
                 && this.markedSlots.some(slot => this.scopeInvalidFrom(slot.scopeCriteria));
         },
 
+        hasInvalidFormFieldsSelection() {
+            return this.hasFormFieldsSelector
+                && this.markedSlots.some(slot => this.formFieldsInvalidFrom(slot.formFields));
+        },
+
         hasInvalidDeadline() {
             return this.markedSlots.some(slot => this.slotDeadlineError(slot));
         },
@@ -127,6 +172,7 @@ app.component('opportunity-appeal-correction-assignment', {
                 && this.markedSlots.length > 0
                 && !this.hasInvalidSelection
                 && !this.hasInvalidScopeSelection
+                && !this.hasInvalidFormFieldsSelection
                 && !this.hasInvalidDeadline;
         },
 
@@ -236,6 +282,9 @@ app.component('opportunity-appeal-correction-assignment', {
                 // F6: escopo inicia com TODOS os critérios (persiste null)
                 scopeCriteria: this.hasCriteriaSelector ? this.allCriteriaIds() : null,
                 scopeOpen: false,
+                // Campos do formulário: todos liberados por padrão
+                formFields: this.hasFormFieldsSelector ? this.allFormFieldIds() : null,
+                formFieldsOpen: false,
                 // CA-4: visibilidade no ambiente do corretor (defaults da designação)
                 showAppealOpinion: true,
                 showOriginalValuerName: true,
@@ -455,12 +504,10 @@ app.component('opportunity-appeal-correction-assignment', {
         },
 
         /**
-         * Escopo persistido: critérios (quando restringidos) + flags de
-         * visibilidade do ambiente do corretor (CA-4 / CA-6).
-         * Sem critérios restritos e sem flags true → ainda envia as flags
-         * explícitas para o gestor poder desligar o nome do avaliador.
+         * Escopo persistido: critérios (quando restringidos) + campos do
+         * formulário (quando restringidos) + flags de visibilidade (CA-4/CA-6).
          */
-        scopePayloadFrom(selected, visibility = {}) {
+        scopePayloadFrom(selected, visibility = {}, formFields = null) {
             const scope = {
                 showAppealOpinion: !!visibility.showAppealOpinion,
                 showOriginalValuerName: !!visibility.showOriginalValuerName,
@@ -474,7 +521,90 @@ app.component('opportunity-appeal-correction-assignment', {
                 scope.criteria = [...selected];
             }
 
+            if (this.hasFormFieldsSelector
+                && formFields
+                && formFields.length > 0
+                && formFields.length < this.allFormFieldIds().length
+            ) {
+                scope.formFields = [...formFields];
+            }
+
             return scope;
+        },
+
+        allFormFieldIds() {
+            const catalog = this.formFieldsCatalog;
+            if (!catalog?.items?.length) {
+                return [];
+            }
+
+            return catalog.items.map(item => String(item.id));
+        },
+
+        formFieldsInvalidFrom(selected) {
+            return this.hasFormFieldsSelector && (!selected || selected.length === 0);
+        },
+
+        slotFormFieldsCount(slot) {
+            if (!this.hasFormFieldsSelector) {
+                return 0;
+            }
+
+            return slot?.formFields?.length ?? this.formFieldsCatalog.total;
+        },
+
+        reviewFormFieldsLabel(review) {
+            const ids = this.scopeFormFieldIds(review);
+
+            if (ids == null) {
+                return this.text('all form fields released');
+            }
+
+            const total = this.formFieldsCatalog?.total ?? ids.length;
+            return this.text('form fields count')
+                .replace('%s', ids.length)
+                .replace('%s', total);
+        },
+
+        scopeFormFieldIds(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            if (!scope) {
+                return null;
+            }
+
+            if (!Object.prototype.hasOwnProperty.call(scope, 'formFields')) {
+                return null;
+            }
+
+            const fields = scope.formFields;
+            if (fields == null) {
+                return null;
+            }
+
+            return Array.isArray(fields) ? fields.map(String) : null;
+        },
+
+        toggleSelectAllFormFields(slot, targetKey = 'formFields') {
+            if (!this.hasFormFieldsSelector) {
+                return;
+            }
+
+            const all = this.allFormFieldIds();
+            const current = slot[targetKey] || [];
+            slot[targetKey] = current.length === all.length ? [] : [...all];
+        },
+
+        formFieldIcon(item) {
+            if (item?.kind === 'file' || String(item?.id || '').startsWith('rfc_')) {
+                return 'file';
+            }
+
+            return 'text';
+        },
+
+        openFormFieldsModal(modal) {
+            this.formFieldsSearchQuery = '';
+            modal.open();
         },
 
         reviewShowsAppealOpinion(review) {
@@ -747,6 +877,8 @@ app.component('opportunity-appeal-correction-assignment', {
             // null); trocar para "todos marcados" volta a liberar integral.
             slot.substituteScopeCriteria = this.scopeCriteriaIds(review) ?? (this.hasCriteriaSelector ? this.allCriteriaIds() : null);
             slot.substituteScopeOpen = this.hasCriteriaSelector;
+            slot.substituteFormFields = this.scopeFormFieldIds(review) ?? (this.hasFormFieldsSelector ? this.allFormFieldIds() : null);
+            slot.substituteFormFieldsOpen = this.hasFormFieldsSelector;
             slot.substituteShowAppealOpinion = this.reviewShowsAppealOpinion(review);
             slot.substituteShowOriginalValuerName = this.reviewShowsOriginalValuerName(review);
         },
@@ -758,7 +890,8 @@ app.component('opportunity-appeal-correction-assignment', {
         canConfirmSubstitution(slot) {
             return !slot.substituting
                 && this.normalizeId(slot.substituteUserId) != null
-                && !this.scopeInvalidFrom(slot.substituteScopeCriteria);
+                && !this.scopeInvalidFrom(slot.substituteScopeCriteria)
+                && !this.formFieldsInvalidFrom(slot.substituteFormFields);
         },
 
         /**
@@ -782,10 +915,14 @@ app.component('opportunity-appeal-correction-assignment', {
             try {
                 const response = await api.PATCH(url, {
                     correctorUser: this.normalizeId(slot.substituteUserId),
-                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria, {
-                        showAppealOpinion: slot.substituteShowAppealOpinion,
-                        showOriginalValuerName: slot.substituteShowOriginalValuerName,
-                    }),
+                    releasedScope: this.scopePayloadFrom(
+                        slot.substituteScopeCriteria,
+                        {
+                            showAppealOpinion: slot.substituteShowAppealOpinion,
+                            showOriginalValuerName: slot.substituteShowOriginalValuerName,
+                        },
+                        slot.substituteFormFields,
+                    ),
                 });
 
                 if (!response.ok) {
@@ -1040,10 +1177,14 @@ app.component('opportunity-appeal-correction-assignment', {
                 status: this.config.statusDesignated ?? 0,
                 correctionType: this.config.correctionTypeDefault || 'official',
                 // F6 + CA-4: critérios (se restritos) + visibilidade do ambiente
-                releasedScope: this.scopePayloadFrom(slot.scopeCriteria, {
-                    showAppealOpinion: slot.showAppealOpinion,
-                    showOriginalValuerName: slot.showOriginalValuerName,
-                }),
+                releasedScope: this.scopePayloadFrom(
+                    slot.scopeCriteria,
+                    {
+                        showAppealOpinion: slot.showAppealOpinion,
+                        showOriginalValuerName: slot.showOriginalValuerName,
+                    },
+                    slot.formFields,
+                ),
                 // null = sem prazo (corretor pode corrigir a qualquer momento)
                 endsAt: this.toBackendDate(slot.endsAt),
             };

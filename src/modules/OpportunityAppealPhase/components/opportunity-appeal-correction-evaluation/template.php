@@ -13,7 +13,6 @@ $this->import('
     mc-icon
     mc-loading
     mc-modal
-    v1-embed-tool
 ');
 ?>
 
@@ -27,71 +26,112 @@ $this->import('
             <section class="opportunity-appeal-correction-evaluation__registration">
                 <mc-card>
                     <template #title>
-                        <h3><?= i::__('Dados da inscrição') ?></h3>
+                        <h3><?= i::__('Formulário da inscrição') ?></h3>
                     </template>
                     <template #content>
                         <p class="opportunity-appeal-correction-evaluation__registration-hint">
-                            <?= i::__('Consulte os dados da inscrição para refazer a análise antes de corrigir a nota.') ?>
+                            <?= i::__('Campos liberados pelo gestor na designação. Use-os para refazer a análise antes de corrigir a nota.') ?>
                         </p>
 
-                        <dl v-if="registrationContext" class="opportunity-appeal-correction-evaluation__registration-summary">
+                        <dl class="opportunity-appeal-correction-evaluation__registration-summary">
                             <div class="opportunity-appeal-correction-evaluation__info">
                                 <dt><?= i::__('Inscrição') ?></dt>
-                                <dd>{{ registrationContext.number }}</dd>
+                                <dd>{{ visibleForm?.number || environment.registrationNumber }}</dd>
                             </div>
-                            <div v-if="registrationOwnerName" class="opportunity-appeal-correction-evaluation__info opportunity-appeal-correction-evaluation__info--wide">
-                                <dt><?= i::__('Agente proponente') ?></dt>
-                                <dd>
-                                    <a v-if="registrationContext.owner?.singleUrl" :href="registrationContext.owner.singleUrl" target="_blank" rel="noopener">
-                                        {{ registrationOwnerName }}
-                                    </a>
-                                    <template v-else>{{ registrationOwnerName }}</template>
-                                </dd>
-                            </div>
-                            <div v-if="registrationOwnerDescription" class="opportunity-appeal-correction-evaluation__info opportunity-appeal-correction-evaluation__info--wide">
-                                <dt><?= i::__('Descrição do agente') ?></dt>
-                                <dd>{{ registrationOwnerDescription }}</dd>
-                            </div>
-                            <div v-if="registrationContext.category" class="opportunity-appeal-correction-evaluation__info">
+                            <div v-if="visibleForm?.category" class="opportunity-appeal-correction-evaluation__info">
                                 <dt><?= i::__('Categoria') ?></dt>
-                                <dd>{{ registrationContext.category }}</dd>
+                                <dd>{{ visibleForm.category }}</dd>
                             </div>
-                            <div v-if="registrationContext.range" class="opportunity-appeal-correction-evaluation__info">
+                            <div v-if="visibleForm?.range" class="opportunity-appeal-correction-evaluation__info">
                                 <dt><?= i::__('Faixa') ?></dt>
-                                <dd>{{ registrationContext.range }}</dd>
+                                <dd>{{ visibleForm.range }}</dd>
                             </div>
-                            <div v-if="registrationContext.proponentType" class="opportunity-appeal-correction-evaluation__info">
+                            <div v-if="visibleForm?.proponentType" class="opportunity-appeal-correction-evaluation__info">
                                 <dt><?= i::__('Tipo de proponente') ?></dt>
-                                <dd>{{ registrationContext.proponentType }}</dd>
-                            </div>
-                            <div v-if="registrationOwnerAreas" class="opportunity-appeal-correction-evaluation__info opportunity-appeal-correction-evaluation__info--wide">
-                                <dt><?= i::__('Áreas de atuação') ?></dt>
-                                <dd>{{ registrationOwnerAreas }}</dd>
+                                <dd>{{ visibleForm.proponentType }}</dd>
                             </div>
                         </dl>
 
-                        <div class="opportunity-appeal-correction-evaluation__registration-actions">
-                            <a
-                                v-if="registrationContext?.singleUrl"
-                                class="button button--primary-outline button--sm"
-                                :href="registrationContext.singleUrl"
-                                target="_blank"
-                                rel="noopener">
-                                <?= i::__('Abrir inscrição completa') ?>
-                            </a>
+                        <div v-if="visibleForm?.agentsSummary" class="opportunity-appeal-correction-evaluation__form-block">
+                            <h4><?= i::__('Agente proponente') ?></h4>
+                            <p class="semibold">
+                                <a
+                                    v-if="visibleForm.agentsSummary.owner?.singleUrl"
+                                    :href="visibleForm.agentsSummary.owner.singleUrl"
+                                    target="_blank"
+                                    rel="noopener">
+                                    {{ registrationOwnerName }}
+                                </a>
+                                <template v-else>{{ registrationOwnerName || '—' }}</template>
+                            </p>
+                            <p v-if="registrationOwnerDescription">{{ registrationOwnerDescription }}</p>
+                            <p v-if="registrationOwnerAreas">
+                                <span class="opportunity-appeal-correction-evaluation__label"><?= i::__('Áreas de atuação') ?>:</span>
+                                {{ registrationOwnerAreas }}
+                            </p>
                         </div>
 
-                        <h4 class="opportunity-appeal-correction-evaluation__registration-form-title">
-                            <?= i::__('Campos do formulário') ?>
-                        </h4>
-                        <div class="opportunity-appeal-correction-evaluation__registration-embed">
-                            <v1-embed-tool
-                                route="registrationevaluationtionformview"
-                                iframe-id="correction-registration"
-                                :id="environment.registrationId"
-                                min-height="200px">
-                            </v1-embed-tool>
+                        <div v-if="visibleForm?.spaceSummary?.length" class="opportunity-appeal-correction-evaluation__form-block">
+                            <h4><?= i::__('Espaço vinculado') ?></h4>
+                            <ul class="opportunity-appeal-correction-evaluation__form-list">
+                                <li v-for="space in visibleForm.spaceSummary" :key="space.id">
+                                    <a v-if="space.singleUrl" :href="space.singleUrl" target="_blank" rel="noopener">{{ space.name }}</a>
+                                    <template v-else>{{ space.name }}</template>
+                                </li>
+                            </ul>
                         </div>
+
+                        <div v-if="visibleForm?.fields?.length" class="opportunity-appeal-correction-evaluation__form-block">
+                            <h4><?= i::__('Campos do formulário') ?></h4>
+                            <div
+                                v-for="field in visibleForm.fields"
+                                :key="field.id"
+                                class="opportunity-appeal-correction-evaluation__form-field">
+                                <div class="opportunity-appeal-correction-evaluation__form-field-title semibold">
+                                    {{ field.title }}
+                                    <small v-if="field.phaseName">{{ field.phaseName }}</small>
+                                </div>
+                                <ul v-if="field.items?.length" class="opportunity-appeal-correction-evaluation__form-list">
+                                    <li v-for="(item, index) in field.items" :key="item.id || item.url || index">
+                                        <a
+                                            v-if="item.url"
+                                            :href="item.url"
+                                            target="_blank"
+                                            rel="noopener">
+                                            {{ item.name || item.url }}
+                                        </a>
+                                        <template v-else>{{ item.name || '—' }}</template>
+                                    </li>
+                                </ul>
+                                <div v-else class="opportunity-appeal-correction-evaluation__form-field-value">
+                                    {{ field.value || '—' }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="visibleForm?.files?.length" class="opportunity-appeal-correction-evaluation__form-block">
+                            <h4><?= i::__('Anexos') ?></h4>
+                            <div
+                                v-for="group in visibleForm.files"
+                                :key="group.id"
+                                class="opportunity-appeal-correction-evaluation__form-field">
+                                <div class="opportunity-appeal-correction-evaluation__form-field-title semibold">
+                                    {{ group.title }}
+                                    <small v-if="group.phaseName">{{ group.phaseName }}</small>
+                                </div>
+                                <ul v-if="group.files?.length" class="opportunity-appeal-correction-evaluation__form-list">
+                                    <li v-for="file in group.files" :key="file.id">
+                                        <a v-if="file.url" :href="file.url" target="_blank" rel="noopener">{{ file.name }}</a>
+                                        <template v-else>{{ file.name }}</template>
+                                    </li>
+                                </ul>
+                                <div v-else class="opportunity-appeal-correction-evaluation__form-field-value">—</div>
+                            </div>
+                        </div>
+
+                        <mc-alert v-if="!hasVisibleFormContent" type="helper">
+                            <?= i::__('Nenhum campo do formulário foi liberado nesta designação.') ?>
+                        </mc-alert>
                     </template>
                 </mc-card>
             </section>
@@ -360,6 +400,24 @@ $this->import('
                 <div class="opportunity-appeal-correction-evaluation__total">
                     <span><?= i::__('Pontuação total') ?></span>
                     <strong>{{ totalScore }}</strong>
+                </div>
+
+                <div v-if="originalOpinion" class="opportunity-appeal-correction-evaluation__form-block">
+                    <h4><?= i::__('Parecer técnico original') ?></h4>
+                    <p class="opportunity-appeal-correction-evaluation__original-opinion">{{ originalOpinion }}</p>
+                </div>
+
+                <div class="field opportunity-appeal-correction-evaluation__opinion">
+                    <label for="corrected-technical-obs"><?= i::__('Parecer da correção (adendo)') ?></label>
+                    <small class="opportunity-appeal-correction-evaluation__opinion-hint">
+                        <?= i::__('Explique o que motivou a nova nota. Este texto fica registrado junto à correção.') ?>
+                    </small>
+                    <textarea
+                        id="corrected-technical-obs"
+                        name="corrected-technical-obs"
+                        :disabled="isLocked"
+                        rows="5"
+                        v-model="formData.data.obs"></textarea>
                 </div>
             </template>
         </mc-card>

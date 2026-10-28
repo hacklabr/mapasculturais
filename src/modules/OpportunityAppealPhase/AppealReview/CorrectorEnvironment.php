@@ -4,12 +4,14 @@ namespace OpportunityAppealPhase\AppealReview;
 
 use DateTime;
 use MapasCulturais\App;
+use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Exceptions\PermissionDenied;
 use MapasCulturais\i;
 use Opportunities\Module as OpportunitiesModule;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 use OpportunityAppealPhase\Module;
+use OpportunityPhases\Module as OpportunityPhases;
 
 /**
  * Monta o payload read-only do ambiente do corretor (PR4.5 / issue #14).
@@ -53,9 +55,9 @@ class CorrectorEnvironment
             'registrationId' => (int) $registration->id,
             'registrationNumber' => $registration->number,
             'opportunityName' => (string) $registration->opportunity->name,
-            // Contexto da inscrição para o corretor refazer a análise (agente,
-            // categoria etc.) — o embed BaseV1 só mostra campos configurados.
-            'registrationContext' => $this->buildRegistrationContext($registration),
+            // Formulário da inscrição filtrado pelos campos liberados na designação
+            // (mesmo espírito do "Abrir lista de campos" do avaliador).
+            'visibleForm' => $this->buildVisibleForm($review, $registration),
             // F7 (#51): método da fase principal — define como o frontend
             // renderiza o formulário (critérios técnicos, campos documentais
             // ou resultado global do simples).
@@ -337,9 +339,11 @@ class CorrectorEnvironment
             return $data;
         }
 
+        // obs/viability não são critérios: seguem sempre liberados (parecer
+        // da correção e exequibilidade), alinhado a mergeWithinReleasedScope.
         $filtered = [];
         foreach ($data as $key => $value) {
-            if (in_array((string) $key, $scope_ids, true)) {
+            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope_ids, true)) {
                 $filtered[$key] = $value;
             }
         }
@@ -378,12 +382,43 @@ class CorrectorEnvironment
     }
 
     /**
-     * Resumo da inscrição para a coluna esquerda do ambiente do corretor.
+     * Campos do formulário liberados na designação.
+     * null = todos (designação antiga ou "selecionar todos").
+     *
+     * @return string[]|null
+     */
+    private function getReleasedFormFieldIds(RegistrationAppealReview $review): ?array
+    {
+        $scope = $review->releasedScope;
+        if ($scope === null) {
+            return null;
+        }
+
+        $scope = (array) $scope;
+        if (!array_key_exists('formFields', $scope)) {
+            return null;
+        }
+
+        if ($scope['formFields'] === null) {
+            return null;
+        }
+
+        return array_map('strval', (array) $scope['formFields']);
+    }
+
+    private function isFormFieldReleased(?array $released, string $field_id): bool
+    {
+        return $released === null || in_array($field_id, $released, true);
+    }
+
+    /**
+     * Formulário da inscrição filtrado pelos campos liberados ao corretor.
      *
      * @return array<string, mixed>
      */
-    private function buildRegistrationContext($registration): array
+    private function buildVisibleForm(RegistrationAppealReview $review, Registration $registration): array
     {
+        $released = $this->getReleasedFormFieldIds($review);
         $owner = $registration->owner;
         $agents_data = $registration->agentsData;
         $owner_data = null;
@@ -394,19 +429,223 @@ class CorrectorEnvironment
             $owner_data = (object) $agents_data['owner'];
         }
 
-        return [
-            'id' => (int) $registration->id,
+        $result = [
             'number' => $registration->number,
+            'singleUrl' => $registration->getSingleUrl(),
             'category' => $registration->category,
             'range' => $registration->range,
             'proponentType' => $registration->proponentType,
-            'singleUrl' => $registration->getSingleUrl(),
-            'owner' => $owner ? $owner->simplify('id,name,singleUrl') : null,
-            'ownerSnapshot' => $owner_data ? [
-                'name' => $owner_data->name ?? null,
-                'shortDescription' => $owner_data->shortDescription ?? null,
-                'terms' => $owner_data->terms ?? null,
-            ] : null,
+            'agentsSummary' => null,
+            'spaceSummary' => null,
+            'fields' => [],
+            'files' => [],
+        ];
+
+        if ($this->isFormFieldReleased($released, 'agentsSummary')) {
+            $result['agentsSummary'] = [
+                'owner' => $owner ? $owner->simplify('id,name,singleUrl') : null,
+                'ownerSnapshot' => $owner_data ? [
+                    'name' => $owner_data->name ?? null,
+                    'shortDescription' => $owner_data->shortDescription ?? null,
+                    'terms' => $owner_data->terms ?? null,
+                ] : null,
+            ];
+        }
+
+        if ($this->isFormFieldReleased($released, 'spaceSummary')) {
+            $spaces = [];
+            $space_relation = $registration->getSpaceRelation();
+            $relations = is_array($space_relation) ? $space_relation : ($space_relation ? [$space_relation] : []);
+            foreach ($relations as $relation) {
+                if ($relation->space ?? null) {
+                    $spaces[] = $relation->space->simplify('id,name,singleUrl');
+                }
+            }
+            $result['spaceSummary'] = $spaces ?: null;
+        }
+
+        $phase_registrations = [];
+        $current = $registration;
+        while ($current) {
+            array_unshift($phase_registrations, $current);
+            $current = OpportunityPhases::getPreviousPhaseRegistration($current);
+        }
+
+        // Leitura privilegiada: o corretor já passou por assertCanAccess; o ??
+        // do PHP NÃO dispara __get de metadados (isset sem __isset), então
+        // `$reg->field_X ?? null` sempre virava null mesmo com valor no banco.
+        $app = App::i();
+        $app->disableAccessControl();
+        try {
+            foreach ($phase_registrations as $phase_registration) {
+                $opportunity = $phase_registration->opportunity;
+                $phase_name = (string) $opportunity->name;
+
+                // Garante que field_* desta oportunidade estão registrados no App
+                // (necessário para getMetadata/__get resolverem a definição).
+                if (method_exists($opportunity, 'registerRegistrationMetadata')) {
+                    $opportunity->registerRegistrationMetadata();
+                }
+
+                foreach ($opportunity->registrationFieldConfigurations as $field) {
+                    $field_id = (string) $field->getFieldName();
+                    if (!$this->isFormFieldReleased($released, $field_id)) {
+                        continue;
+                    }
+
+                    $raw = $phase_registration->$field_id;
+                    $formatted = $this->formatFormFieldValue($raw);
+                    $result['fields'][] = [
+                        'id' => $field_id,
+                        'title' => (string) ($field->title ?: $field_id),
+                        'type' => (string) ($field->fieldType ?? ''),
+                        'phaseName' => $phase_name,
+                        'value' => $formatted['text'],
+                        'items' => $formatted['items'],
+                    ];
+                }
+
+                foreach ($opportunity->registrationFileConfigurations as $file_cfg) {
+                    $group = (string) $file_cfg->getFileGroupName();
+                    if (!$this->isFormFieldReleased($released, $group)) {
+                        continue;
+                    }
+
+                    $files = $phase_registration->getFiles($group);
+                    if (!is_array($files)) {
+                        $files = $files ? [$files] : [];
+                    }
+
+                    $file_items = [];
+                    foreach ($files as $file) {
+                        $file_items[] = [
+                            'id' => (int) $file->id,
+                            'name' => (string) $file->name,
+                            'url' => method_exists($file, 'getUrl') ? $file->getUrl() : (string) ($file->url ?? ''),
+                        ];
+                    }
+
+                    $result['files'][] = [
+                        'id' => $group,
+                        'title' => (string) ($file_cfg->title ?: $group),
+                        'phaseName' => $phase_name,
+                        'files' => $file_items,
+                    ];
+                }
+            }
+        } finally {
+            $app->enableAccessControl();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Normaliza o valor do campo para a UI do corretor.
+     * Arquivos/imagens (ex.: agent-owner-field de anexo) viram items
+     * tipados; o restante vira texto legível — nunca JSON cru.
+     *
+     * @return array{text: string, items: array<int, array<string, mixed>>}
+     */
+    private function formatFormFieldValue(mixed $value): array
+    {
+        if ($value === null || $value === '') {
+            return ['text' => '', 'items' => []];
+        }
+
+        if (is_bool($value)) {
+            return ['text' => $value ? i::__('Sim') : i::__('Não'), 'items' => []];
+        }
+
+        if (is_scalar($value)) {
+            return ['text' => (string) $value, 'items' => []];
+        }
+
+        $as_array = is_object($value) ? (array) $value : $value;
+        if (!is_array($as_array)) {
+            return ['text' => '', 'items' => []];
+        }
+
+        // Lista homogênea (galeria, downloads, links…)
+        if ($as_array !== [] && array_is_list($as_array)) {
+            $items = [];
+            $texts = [];
+            foreach ($as_array as $entry) {
+                $formatted = $this->formatFormFieldValue($entry);
+                foreach ($formatted['items'] as $item) {
+                    $items[] = $item;
+                }
+                if ($formatted['text'] !== '') {
+                    $texts[] = $formatted['text'];
+                }
+            }
+
+            return [
+                'text' => $items ? '' : implode(', ', $texts),
+                'items' => $items,
+            ];
+        }
+
+        $file_item = $this->normalizeFileLikeItem($as_array);
+        if ($file_item !== null) {
+            return ['text' => '', 'items' => [$file_item]];
+        }
+
+        // Link / vídeo MetaList-like: {title, value/url}
+        $link_url = $as_array['value'] ?? $as_array['url'] ?? null;
+        $link_title = $as_array['title'] ?? $as_array['name'] ?? null;
+        if (is_string($link_url) && $link_url !== '' && str_starts_with($link_url, 'http')) {
+            return [
+                'text' => '',
+                'items' => [[
+                    'kind' => 'link',
+                    'name' => (string) ($link_title ?: $link_url),
+                    'url' => $link_url,
+                ]],
+            ];
+        }
+
+        // Endereço / objeto genérico: chave: valor legível
+        $parts = [];
+        foreach ($as_array as $key => $part) {
+            if ($part === null || $part === '') {
+                continue;
+            }
+            if (is_scalar($part)) {
+                $parts[] = is_string($key) ? "{$key}: {$part}" : (string) $part;
+            }
+        }
+
+        return ['text' => implode(' · ', $parts), 'items' => []];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array{kind: string, id?: int, name: string, url: string, mimeType?: string}|null
+     */
+    private function normalizeFileLikeItem(array $data): ?array
+    {
+        $url = $data['url'] ?? null;
+        $name = $data['name'] ?? null;
+        $mime = $data['mimeType'] ?? $data['mime'] ?? null;
+
+        if (!is_string($url) || $url === '' || !is_string($name) || $name === '') {
+            return null;
+        }
+
+        // Exige cara de arquivo (mime ou id) para não confundir com link genérico.
+        if ($mime === null && !isset($data['id'])) {
+            return null;
+        }
+
+        $kind = (is_string($mime) && str_starts_with($mime, 'image/')) ? 'image' : 'file';
+
+        return [
+            'kind' => $kind,
+            'id' => isset($data['id']) ? (int) $data['id'] : null,
+            'name' => $name,
+            'url' => $url,
+            'mimeType' => is_string($mime) ? $mime : null,
         ];
     }
 

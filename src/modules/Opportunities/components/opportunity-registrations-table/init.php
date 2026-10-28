@@ -40,7 +40,10 @@ $data['evaluationStatusDict'] = [
 
 $phase = $this->controller->requestedEntity;
 
-$skipFields = ["previousPhaseRegistrationId", "nextPhaseRegistrationId", "id"];
+// preliminaryResultSnapshot: metadado interno da publicação em dois estágios
+// (exibido no acompanhamento do proponente). Não entra como coluna da lista —
+// o valor costuma coincidir com "Média original" e confunde o gestor.
+$skipFields = ["previousPhaseRegistrationId", "nextPhaseRegistrationId", "id", "preliminaryResultSnapshot"];
 $default_select = "agentsData,number,singleUrl,consolidatedResult,appliedPointReward,score,status,sentTimestamp,createTimestamp,files,owner.{name,geoMesorregiao,geoEstado,geoMicrorregiao,geoMunicipio,geoPais},editSentTimestamp,editableUntil,editableFields";
 $default_headers = [
     [
