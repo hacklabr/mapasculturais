@@ -20,3 +20,10 @@
 - **Razão:** a ApiQuery não suporta filtrar/ordenar por propriedades virtuais computadas em hook; suportar exigiria estender o core da ApiQuery — fora do escopo da tarefa.
 - **Decisão registrada em:** relato do especialista ao facilitador na execução do F4 (2026-09-10).
 - **Documento de referência atualizado:** n/a — comportamento novo, sem contradição com PRD (CA-11 exige exibição, não filtragem); follow-up possível registrado na conversa da rodada.
+
+### 2026-10-28 — Seguimento F2/F3 (#18/#19): campos do formulário + parecer da correção
+- **Planejado (onda original):** F2 designa corretor/critérios; F3 ambiente do corretor com critérios liberados e parecer da Comissão (quando liberado). Não havia seletor de campos do formulário da inscrição nem parecer/adendo explícito da correção técnica na UI do corretor.
+- **Implementado:** (1) na designação, gestor escolhe um/vários/todos os campos do formulário visíveis ao corretor (`releasedScope.formFields`), modal no padrão `fields-visible-evaluators`; (2) ambiente do corretor monta `visibleForm` com valores reais (texto e links de anexo; sem preview de imagem; sem atalho “Abrir inscrição completa”); (3) método técnico ganha “Parecer da correção (adendo)” em `obs`; (4) UI troca jargão “slot” por “avaliação”/“avaliador original”; (5) lista de inscritos deixa de expor a coluna metadado `preliminaryResultSnapshot` (duplicava visualmente “Média original”).
+- **Razão:** validação em uso — o corretor precisa reanalisar a ficha com o recorte que o gestor libera; o parecer explica a nova nota; nomes técnicos (“slot”) e coluna interna de snapshot confundiam o gestor.
+- **Decisão registrada em:** comentário de registro na épica #7 (2026-10-28); commit `6cc9137d16`.
+- **Documento de referência atualizado:** `docs/reference/prd.md` (RF-A30 CA-4 e CA-6).

@@ -162,9 +162,9 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 | CA-1 | Gestor com `@control` na oportunidade vê, na lista de inscritos **da fase de recurso**, ação de designação de correção **apenas** para inscrições com recurso deferido. |
 | CA-2 | Modal de designação lista apenas as `RegistrationEvaluation` da fase principal daquela inscrição, uma por avaliador. |
 | CA-3 | Por slot, o gestor só pode designar como corretor: (a) o dono daquele slot; ou (b) membro da Comissão de Recursos. Avaliadores de outros slots da mesma inscrição são rejeitados. |
-| CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos. *(Cobertura atual: UI entrega corretor + escopo de critérios (F6); prazo, correction_type e visibilidade têm API pronta (PR6) e aguardam a onda de parametrização da UI.)* |
+| CA-4 | Ao designar, o gestor define: corretor, prazo (início/fim), escopo de critérios liberados, campos do formulário da inscrição liberados ao corretor (`releasedScope.formFields`, seletor no estilo “Abrir lista de campos”), `correction_type` (`official` ou `record`), e visibilidade do parecer da Comissão de Recursos e do nome do avaliador original. *(Cobertura atual: UI entrega corretor, prazo, escopo de critérios, campos do formulário e flags de visibilidade; `correction_type` permanece API-only — follow-up.)* |
 | CA-5 | Corretor designado recebe notificação interna e e-mail informando a tarefa. |
-| CA-6 | Ambiente do corretor só expõe o slot designado (nunca as outras N-1 avaliações da mesma inscrição) e só os critérios liberados; parecer da Comissão só aparece se configurado. |
+| CA-6 | Ambiente do corretor só expõe o slot designado (nunca as outras N-1 avaliações da mesma inscrição), só os critérios liberados e só os campos do formulário liberados na designação; parecer da Comissão e nome do avaliador original só aparecem se configurados; no método técnico o corretor registra parecer da correção (adendo em `obs`). |
 | CA-7 | Corretor pode salvar rascunho e enviar definitivamente. Após envio, a edição é bloqueada. |
 | CA-8 | Ao enviar, a `RegistrationEvaluation` original é atualizada in-place, gera revisão com mensagem identificando corretor e slot, e a consolidação da inscrição é recalculada **apenas para aquela inscrição**. |
 | CA-9 | Se `correction_type = record`, a revisão e o registro são gravados, mas a nota oficial/consolidação não muda. |
@@ -192,9 +192,9 @@ A correção persiste in-place na `RegistrationEvaluation` original, mantendo se
 **Evidência de implementação (a preencher pelo time de Engenharia em Stage 2):**
 - `registration_appeal_review` — migration e entidade (PR1).
 - `AppealReview::eligibleCorrectors()` — regra de elegibilidade por slot (PR2).
-- `AppealReview\Service::applyCorrection()` — persistência in-place e revisão (PR4).
-- Endpoint read-only do corretor designado (PR4.5).
-- Componentes frontend: `opportunity-appeal-correction-assignment`, `opportunity-appeal-correction-evaluation` (F2, F3).
+- `AppealReview\Service::applyCorrection()` — persistência in-place e revisão (PR4); `obs`/`viability` liberados junto ao escopo de critérios.
+- Endpoint read-only do corretor designado (PR4.5) + `visibleForm` filtrado por `releasedScope.formFields` (seguimento pós-F3, commit `6cc9137d16`).
+- Componentes frontend: `opportunity-appeal-correction-assignment` (F2 + seletor de campos no padrão `fields-visible-evaluators`), `opportunity-appeal-correction-evaluation` (F3 + formulário liberado + parecer da correção).
 - Feature flags: `APPEAL_TWO_STAGE_PUBLISH` e `APPEAL_SCORE_CORRECTION`, default OFF.
 
 ### Grupo B — Entidades do mapeamento cultural

@@ -17,7 +17,7 @@
 - Suíte de testes vermelha na base o tempo todo (deprecations PHP 8.4 do core) — todo teste precisou de controle via stash; candidata a uma rodada de higiene técnica separada.
 
 ## Pendências declaradas (follow-ups, fora da rodada)
-- CA-4 parcial na UI: prazo (início/fim), `correction_type` e visibilidade do parecer têm API pronta (PR6) mas sem formulário na UI — onda de parametrização futura.
-- CA-13 parcial: reabertura pós-envio com novo prazo sem backend/UI (registrado na #45).
+- CA-4: prazo, escopo de critérios, campos do formulário e flags de visibilidade entregues na UI (seguimento 2026-10-28, `6cc9137d16`); resta `correction_type` (`official`/`record`) só na API.
+- CA-13: reabertura pós-envio com novo prazo — entregue após o fechamento deste registro (ver comentários posteriores na #7); manter checagem na revisão final (#79).
 - Filtragem pelas colunas de nota (F4): não suportada pela ApiQuery para propriedades virtuais (desvio registrado em `deviations.md`).
 - O link "Expandir" do bloco "Resposta do recurso" na configuração da fase navega para a página pública em vez de expandir (observado durante a rodada; pré-existente).

@@ -6,6 +6,9 @@ O formato é baseado no [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Melhorias
+- Na correção de notas após recurso deferido, o gestor escolhe quais campos do formulário o corretor pode ver (seletor no padrão “Abrir lista de campos”); o corretor vê os valores liberados com links de anexo, registra parecer da correção no método técnico, e a lista de inscritos deixa de mostrar a coluna interna de snapshot preliminar (que duplicava a média original)
+
 ### Novas Funcionalidades
 - Adiciona configuração na oportunidade para ocultar todas as datas das fases na página pública, na linha do tempo de acompanhamento da inscrição e nos avisos de prazo da ficha, mantendo as datas operacionais ativas para validações e gestão interna.
 - **Avaliação automática por selos**: o gestor pode indicar, em uma fase de avaliação, quais selos validam o proponente. Se a pessoa já tiver esses selos válidos no perfil, a inscrição é **dispensada automaticamente** daquela fase (marcada como “Dispensada por selos”) e segue para a próxima etapa, sem precisar de avaliador
