@@ -10,6 +10,7 @@ use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
 use MapasCulturais\i;
 use MapasCulturais\Traits;
+use OpportunityAppealPhase\AppealReview\Notifier;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
 
 /**
@@ -23,6 +24,8 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
  * - PUT    /registrationappealreview/single/{id}               → PUT_single (substituir corretor/prazo)
  * - PATCH  /registrationappealreview/single/{id}               → PATCH_single
  * - DELETE /registrationappealreview/single/{id}               → DELETE_single (cancelar designação)
+ * - POST   /registrationappealreview/reopen/{id}               → POST_reopen (reabrir correção enviada)
+ * - POST   /registrationappealreview/deadline/{id}             → POST_deadline (alterar prazo de designação ativa)
  *
  * Segurança: a entidade não usa owner nem permission cache, então o pseudo-owner
  * das checagens genéricas é o próprio usuário logado e as ações canônicas herdadas
@@ -142,6 +145,7 @@ class RegistrationAppealReview extends EntityController
         $review->releasedScope = $this->parseReleasedScope($data['releasedScope'] ?? null);
         $review->startsAt = $this->parseDateParam($data['startsAt'] ?? null);
         $review->endsAt = $this->parseDateParam($data['endsAt'] ?? null);
+        $this->assertValidWindow($review);
         $review->status = ReviewEntity::STATUS_DESIGNATED;
 
         $this->_finishRequest($review, true);
@@ -228,15 +232,107 @@ class RegistrationAppealReview extends EntityController
     /**
      * Cancelamento de designação: restrito a gestores com `@control`
      * (a entidade usa hard delete — sem mudança de status).
+     *
+     * Designação que já teve envio aplicou a correção no slot e guarda a nota
+     * original (originalValue/originalScore): não pode ser apagada.
      */
     function DELETE_single()
     {
         $this->requireAuthentication();
         $this->assertFeatureEnabled();
 
-        $this->getRequestedReview()->registration->opportunity->checkPermission('@control');
+        $review = $this->getRequestedReview();
+        $review->registration->opportunity->checkPermission('@control');
+
+        if ($review->sentTimestamp) {
+            $this->errorJson(i::__('Esta correção já foi aplicada e não pode ser cancelada: o registro guarda a nota original do avaliador.'), 400);
+        }
 
         parent::DELETE_single();
+    }
+
+    /**
+     * Reabre uma designação ENVIADA para o mesmo corretor revisar a correção
+     * do slot (POST /registrationappealreview/reopen/{id}).
+     *
+     * A correção aplicada continua vigente até o novo envio; `sentTimestamp`
+     * é mantido como marca de correção já aplicada (colunas de nota original
+     * e bloqueio de cancelamento dependem dele). `endsAt` opcional redefine o
+     * prazo (null remove); com prazo vencido e sem novo prazo a reabertura é
+     * rejeitada.
+     */
+    function POST_reopen()
+    {
+        $this->requireAuthentication();
+        $this->assertFeatureEnabled();
+
+        $app = App::i();
+
+        $review = $this->getRequestedReview();
+        $review->registration->opportunity->checkPermission('@control');
+
+        if ((int) $review->status !== ReviewEntity::STATUS_SENT) {
+            $this->errorJson(i::__('Somente correções enviadas podem ser reabertas.'), 400);
+        }
+
+        $other_active = $app->repo(ReviewEntity::class)->findBy([
+            'originalEvaluation' => $review->originalEvaluation->id,
+            'status' => ReviewEntity::getActiveStatuses(),
+        ]);
+
+        if ($other_active) {
+            $this->errorJson(i::__('Já existe uma designação ativa para este slot. Conclua ou cancele essa designação antes de reabrir a correção enviada.'), 400);
+        }
+
+        $data = is_array($this->postData) ? $this->postData : [];
+
+        // endsAt ausente mantém o prazo atual; null/'' remove o prazo.
+        if (array_key_exists('endsAt', $data)) {
+            $review->endsAt = $this->parseDateParam($data['endsAt']);
+        }
+
+        if ($review->endsAt && $review->endsAt < new DateTime()) {
+            $this->errorJson(i::__('O prazo desta designação já terminou. Informe um novo prazo futuro ou reabra sem prazo.'), 400);
+        }
+
+        $review->status = ReviewEntity::STATUS_REOPENED;
+        $review->save(true);
+
+        Notifier::notifyReopened($review);
+
+        $this->json($review);
+    }
+
+    /**
+     * Altera o prazo final de uma designação ATIVA
+     * (POST /registrationappealreview/deadline/{id}); `endsAt` null remove o
+     * prazo. O corretor é notificado do novo prazo.
+     */
+    function POST_deadline()
+    {
+        $this->requireAuthentication();
+        $this->assertFeatureEnabled();
+
+        $review = $this->getRequestedReview();
+        $review->registration->opportunity->checkPermission('@control');
+
+        if (!$review->isActive()) {
+            $this->errorJson(i::__('O prazo só pode ser alterado em designações ativas. Para correções enviadas, use a reabertura.'), 400);
+        }
+
+        $data = is_array($this->postData) ? $this->postData : [];
+
+        if (!array_key_exists('endsAt', $data)) {
+            $this->errorJson(i::__('Informe o novo prazo (endsAt) ou null para remover o prazo.'), 400);
+        }
+
+        $review->endsAt = $this->parseDateParam($data['endsAt']);
+        $this->assertValidWindow($review);
+        $review->save(true);
+
+        Notifier::notifyDeadlineChanged($review);
+
+        $this->json($review);
     }
 
     // ============================================================ //
@@ -359,6 +455,8 @@ class RegistrationAppealReview extends EntityController
             unset($data['releasedScope']);
         }
 
+        $window_changed = isset($data['startsAt']) || isset($data['endsAt']);
+
         if (isset($data['startsAt'])) {
             $review->startsAt = $this->parseDateParam($data['startsAt']);
             unset($data['startsAt']);
@@ -367,6 +465,10 @@ class RegistrationAppealReview extends EntityController
         if (isset($data['endsAt'])) {
             $review->endsAt = $this->parseDateParam($data['endsAt']);
             unset($data['endsAt']);
+        }
+
+        if ($window_changed) {
+            $this->assertValidWindow($review);
         }
 
         if (array_key_exists('status', $data)) {
@@ -498,6 +600,20 @@ class RegistrationAppealReview extends EntityController
         }
 
         return $scope;
+    }
+
+    /**
+     * Janela de correção (CA-4): prazo final no futuro e início não posterior a ele.
+     */
+    private function assertValidWindow(ReviewEntity $review): void
+    {
+        if ($review->endsAt && $review->endsAt < new DateTime()) {
+            $this->errorJson(i::__('O prazo final da correção não pode estar no passado.'), 400);
+        }
+
+        if ($review->startsAt && $review->endsAt && $review->startsAt > $review->endsAt) {
+            $this->errorJson(i::__('O início da correção não pode ser posterior ao prazo final.'), 400);
+        }
     }
 
     private function parseDateParam(mixed $value): ?DateTime

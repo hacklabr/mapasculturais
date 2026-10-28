@@ -98,7 +98,10 @@ class AppealTwoStagePublishTest extends TestCase
 
         $this->login($admin);
         $opportunity->publishPreliminaryRegistrations();
-        $opportunity->refresh();
+        // Métodos de lote terminam com em->clear() e desanexam a instância
+        // (padrão do publishRegistrations); re-buscar antes de encadear,
+        // como faz o AppealPreliminarySnapshotTest.
+        $opportunity = App::i()->repo('Opportunity')->find($opportunity->id);
 
         $this->assertTrue((bool) $opportunity->publishedPreliminaryRegistrations);
         $this->assertFalse($opportunity->publishedRegistrations);
@@ -110,11 +113,34 @@ class AppealTwoStagePublishTest extends TestCase
 
         $this->login($admin);
         $opportunity->publishRegistrations();
-        $opportunity->refresh();
+        $opportunity = App::i()->repo('Opportunity')->find($opportunity->id);
 
         $this->assertTrue($opportunity->publishedRegistrations);
         $this->assertTrue((bool) $opportunity->publishedPreliminaryRegistrations);
         $this->assertTrue($opportunity->areRegistrationResultsPublished());
+    }
+
+    function testPreliminaryPublishExposesEvaluationDetails(): void
+    {
+        $this->enableTwoStagePublish();
+
+        ['opportunity' => $opportunity, 'registration' => $registration] = $this->createEvaluatedOpportunityScenario();
+
+        $evaluation_configuration = $opportunity->evaluationMethodConfiguration;
+        $evaluation_configuration->publishEvaluationDetails = true;
+        $evaluation_configuration->save(true);
+
+        $data = App::i()->repo('Registration')->find($registration->id)->jsonSerialize();
+        $this->assertArrayNotHasKey('consolidatedDetails', $data);
+
+        $opportunity->publishPreliminaryRegistrations();
+
+        $registration = App::i()->repo('Registration')->find($registration->id);
+        $this->assertFalse($registration->opportunity->publishedRegistrations);
+
+        $data = $registration->jsonSerialize();
+        $this->assertArrayHasKey('consolidatedDetails', $data);
+        $this->assertArrayHasKey('evaluationsDetails', $data);
     }
 
     function testUnpublishPreliminaryDoesNotTouchFinal(): void
@@ -124,11 +150,12 @@ class AppealTwoStagePublishTest extends TestCase
         ['opportunity' => $opportunity] = $this->createEvaluatedOpportunityScenario();
 
         $opportunity->publishPreliminaryRegistrations();
+        $opportunity = App::i()->repo('Opportunity')->find($opportunity->id);
         $opportunity->publishRegistrations();
-        $opportunity->refresh();
+        $opportunity = App::i()->repo('Opportunity')->find($opportunity->id);
 
         $opportunity->unPublishPreliminaryRegistrations();
-        $opportunity->refresh();
+        $opportunity = App::i()->repo('Opportunity')->find($opportunity->id);
 
         $this->assertFalse((bool) $opportunity->publishedPreliminaryRegistrations);
         $this->assertTrue($opportunity->publishedRegistrations);

@@ -8,6 +8,7 @@ return [
     'status-reopened' => i::__('Reaberta'),
     'correction-type-official' => i::__('Correção oficial'),
     'correction-type-record' => i::__('Somente registro'),
+    'no-deadline' => i::__('Sem prazo definido'),
     'error-forbidden' => i::__('Você não tem permissão para acessar este ambiente de correção.'),
     'error-not-found' => i::__('Designação não encontrada ou correção de notas desabilitada.'),
     'error-generic' => i::__('Não foi possível carregar o ambiente de correção.'),

@@ -14,4 +14,7 @@ return [
   'sucesso_despublicar_preliminar' => i::__("Resultado preliminar despublicado com sucesso"),
   'sucesso_publicar_final' => i::__("Resultado final publicado com sucesso e selos aplicados"),
   'sucesso_despublicar_final' => i::__("Resultado final despublicado com sucesso"),
+  // Fase de recurso: estágio único (como antes do R02)
+  'sucesso_publicar' => i::__("Resultado publicado com sucesso"),
+  'sucesso_despublicar' => i::__("Resultado despublicado com sucesso"),
 ];

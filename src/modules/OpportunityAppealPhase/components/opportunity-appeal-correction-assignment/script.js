@@ -10,7 +10,8 @@
  * F5: no painel de acompanhamento, designação ATIVA (status 0/1/3) ganha
  * "Substituir corretor" (PATCH single com {correctorUser}, CA-3 revalidado
  * server-side pelo PR6) e "Cancelar designação" (DELETE single — slot volta
- * a ser designável). Status ENVIADO (2) não tem ações.
+ * a ser designável). Status ENVIADO (2) ganha "Reabrir correção" (POST
+ * reopen/{id}), por slot. Correção já enviada alguma vez não é cancelável.
  *
  * Abertura: ver docblock do init.php deste componente (evento global
  * 'opportunity-appeal-correction-assignment:open' com {opportunity, registration}).
@@ -114,6 +115,10 @@ app.component('opportunity-appeal-correction-assignment', {
                 && this.markedSlots.some(slot => this.scopeInvalidFrom(slot.scopeCriteria));
         },
 
+        hasInvalidDeadline() {
+            return this.markedSlots.some(slot => this.slotDeadlineError(slot));
+        },
+
         canSave() {
             return this.endpointAvailable
                 && this.correctionEligible
@@ -121,7 +126,8 @@ app.component('opportunity-appeal-correction-assignment', {
                 && !this.saving
                 && this.markedSlots.length > 0
                 && !this.hasInvalidSelection
-                && !this.hasInvalidScopeSelection;
+                && !this.hasInvalidScopeSelection
+                && !this.hasInvalidDeadline;
         },
 
         designatedCount() {
@@ -230,6 +236,22 @@ app.component('opportunity-appeal-correction-assignment', {
                 // F6: escopo inicia com TODOS os critérios (persiste null)
                 scopeCriteria: this.hasCriteriaSelector ? this.allCriteriaIds() : null,
                 scopeOpen: false,
+                // CA-4: visibilidade no ambiente do corretor (defaults da designação)
+                showAppealOpinion: true,
+                showOriginalValuerName: true,
+                endsAt: null,
+                endsAtTimeSet: false,
+                endsAtKey: 0,
+                reopenOpen: false,
+                reopenEndsAt: null,
+                reopenEndsAtTimeSet: false,
+                reopenEndsAtKey: 0,
+                reopenWithoutDeadline: false,
+                deadlineOpen: false,
+                deadlineEndsAt: null,
+                deadlineEndsAtTimeSet: false,
+                deadlineEndsAtKey: 0,
+                deadlineRemove: false,
             }));
 
             this.preSelectCorrectors();
@@ -328,11 +350,17 @@ app.component('opportunity-appeal-correction-assignment', {
             ) || null;
         },
 
+        /**
+         * Designação exibida no slot: a ativa, se houver; senão a mais
+         * recente (reviews vêm ordenadas por id ASC).
+         */
         reviewForSlot(slot) {
-            return this.reviews.find(review =>
+            const slot_reviews = this.reviews.filter(review =>
                 review.originalEvaluationId != null
                 && review.originalEvaluationId === this.normalizeId(slot.id)
-            ) || null;
+            );
+
+            return this.activeReviewForSlot(slot) || slot_reviews[slot_reviews.length - 1] || null;
         },
 
         statusNumber(review) {
@@ -379,13 +407,18 @@ app.component('opportunity-appeal-correction-assignment', {
         // ============================================================ //
 
         /**
-         * Linha "trancada" (visual de inércia, cinza): somente designação
-         * ENVIADA — realmente sem ações. Designação ATIVA não usa esse estado:
-         * tem ações de gestão e deve parecer viva.
+         * Linha "trancada" (visual de inércia, cinza): designação sem nenhuma
+         * ação disponível (nem gestão de ativa, nem reabertura de enviada).
          */
         isSlotLocked(slot) {
             const review = this.reviewForSlot(slot);
-            return !!review && !this.canManageReview(review);
+            return !!review && !this.canManageReview(review) && !this.canReopenReview(review);
+        },
+
+        reviewSentAtLabel(review) {
+            return this.statusNumber(review) === (this.config.statusSent ?? 2)
+                ? this.text('sent at')
+                : this.text('last sent at');
         },
 
         /**
@@ -421,16 +454,41 @@ app.component('opportunity-appeal-correction-assignment', {
             return ids;
         },
 
-        scopePayloadFrom(selected) {
-            if (!this.hasCriteriaSelector) {
-                return null;
+        /**
+         * Escopo persistido: critérios (quando restringidos) + flags de
+         * visibilidade do ambiente do corretor (CA-4 / CA-6).
+         * Sem critérios restritos e sem flags true → ainda envia as flags
+         * explícitas para o gestor poder desligar o nome do avaliador.
+         */
+        scopePayloadFrom(selected, visibility = {}) {
+            const scope = {
+                showAppealOpinion: !!visibility.showAppealOpinion,
+                showOriginalValuerName: !!visibility.showOriginalValuerName,
+            };
+
+            if (this.hasCriteriaSelector
+                && selected
+                && selected.length > 0
+                && selected.length < this.allCriteriaIds().length
+            ) {
+                scope.criteria = [...selected];
             }
 
-            if (!selected || selected.length >= this.allCriteriaIds().length) {
-                return null;
+            return scope;
+        },
+
+        reviewShowsAppealOpinion(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            return !!(scope && scope.showAppealOpinion);
+        },
+
+        reviewShowsOriginalValuerName(review) {
+            const scope = this.normalizeScope(review?.releasedScope);
+            if (!scope || !Object.prototype.hasOwnProperty.call(scope, 'showOriginalValuerName')) {
+                return true;
             }
 
-            return { criteria: [...selected] };
+            return !!scope.showOriginalValuerName;
         },
 
         scopeInvalidFrom(selected) {
@@ -502,6 +560,172 @@ app.component('opportunity-appeal-correction-assignment', {
         },
 
         /**
+         * Correção já enviada (sentTimestamp) guarda a nota original do slot:
+         * o backend recusa o cancelamento, então a ação nem é oferecida.
+         */
+        canCancelReview(review) {
+            return this.canManageReview(review) && !review.sentTimestamp;
+        },
+
+        /**
+         * Correção ENVIADA (2) pode ser reaberta por slot, para o mesmo corretor.
+         */
+        canReopenReview(review) {
+            return this.endpointAvailable
+                && !!review
+                && this.statusNumber(review) === (this.config.statusSent ?? 2);
+        },
+
+        startDeadlineEdit(slot) {
+            this.clearSlotDeadline(slot, 'deadlineEndsAt');
+            slot.deadlineRemove = false;
+            slot.substitutionOpen = false;
+            slot.deadlineOpen = true;
+        },
+
+        cancelDeadlineEdit(slot) {
+            slot.deadlineOpen = false;
+        },
+
+        /**
+         * Exige uma escolha: novo prazo futuro ou remover o prazo (só
+         * oferecido quando há prazo vigente).
+         */
+        canConfirmDeadline(slot) {
+            if (slot.changingDeadline) {
+                return false;
+            }
+
+            if (slot.deadlineRemove) {
+                return true;
+            }
+
+            return !!slot.deadlineEndsAt && !this.slotDeadlineError(slot, 'deadlineEndsAt');
+        },
+
+        /**
+         * Altera o prazo da designação ativa do slot:
+         * POST /registrationappealreview/deadline/{id} com {endsAt}
+         * (null remove o prazo). O corretor é notificado pelo backend.
+         */
+        async confirmDeadline(slot) {
+            const review = this.activeReviewForSlot(slot);
+            if (!review || !this.canManageReview(review) || !this.canConfirmDeadline(slot)) {
+                return;
+            }
+
+            const messages = useMessages();
+            slot.changingDeadline = true;
+
+            const api = new API('registrationappealreview');
+            const url = Utils.createUrl('registrationappealreview', 'deadline', { id: review.id });
+            const ends_at = slot.deadlineRemove ? null : this.toBackendDate(slot.deadlineEndsAt);
+
+            try {
+                const response = await api.POST(url, { endsAt: ends_at });
+
+                if (!response.ok) {
+                    throw await response.json().catch(() => ({}));
+                }
+
+                messages.success(this.text('deadline changed'));
+                slot.deadlineOpen = false;
+                await this.fetchReviews();
+            } catch (error) {
+                console.error('opportunity-appeal-correction-assignment:confirmDeadline', error);
+                messages.error(this.backendErrorMessage(error) || this.text('deadline change error'));
+            } finally {
+                slot.changingDeadline = false;
+            }
+        },
+
+        startReopen(slot) {
+            this.clearSlotDeadline(slot, 'reopenEndsAt');
+            slot.reopenWithoutDeadline = false;
+            slot.reopenOpen = true;
+        },
+
+        cancelReopen(slot) {
+            slot.reopenOpen = false;
+        },
+
+        reviewDeadlineExpired(review) {
+            const raw = review?.endsAt && typeof review.endsAt === 'object'
+                ? review.endsAt.date
+                : review?.endsAt;
+
+            return !!raw && new Date(raw) <= new Date();
+        },
+
+        /**
+         * Prazo vencido exige novo prazo ou "sem prazo" (o backend recusa
+         * reabrir com a janela já encerrada).
+         */
+        reopenDeadlineError(slot) {
+            if (slot.reopenWithoutDeadline) {
+                return null;
+            }
+
+            if (slot.reopenEndsAt) {
+                return this.slotDeadlineError(slot, 'reopenEndsAt');
+            }
+
+            return this.reviewDeadlineExpired(this.reviewForSlot(slot))
+                ? this.text('reopen expired deadline')
+                : null;
+        },
+
+        canConfirmReopen(slot) {
+            return !slot.reopening && !this.reopenDeadlineError(slot);
+        },
+
+        /**
+         * Sem endsAt no payload o prazo atual é mantido; null remove o prazo.
+         */
+        reopenPayload(slot) {
+            if (slot.reopenWithoutDeadline) {
+                return { endsAt: null };
+            }
+
+            return slot.reopenEndsAt ? { endsAt: this.toBackendDate(slot.reopenEndsAt) } : {};
+        },
+
+        /**
+         * Reabre a correção enviada do slot:
+         * POST /registrationappealreview/reopen/{id}. Só este slot muda; o
+         * backend valida status, prazo e conflito com designação ativa.
+         */
+        async reopenAssignment(slot) {
+            const review = this.reviewForSlot(slot);
+            if (!this.canReopenReview(review) || !this.canConfirmReopen(slot)) {
+                return;
+            }
+
+            const messages = useMessages();
+            slot.reopening = true;
+
+            const api = new API('registrationappealreview');
+            const url = Utils.createUrl('registrationappealreview', 'reopen', { id: review.id });
+
+            try {
+                const response = await api.POST(url, this.reopenPayload(slot));
+
+                if (!response.ok) {
+                    throw await response.json().catch(() => ({}));
+                }
+
+                messages.success(this.text('correction reopened'));
+                slot.reopenOpen = false;
+                await this.fetchReviews();
+            } catch (error) {
+                console.error('opportunity-appeal-correction-assignment:reopenAssignment', error);
+                messages.error(this.backendErrorMessage(error) || this.text('reopen error'));
+            } finally {
+                slot.reopening = false;
+            }
+        },
+
+        /**
          * Nome do corretor atual da designação (mesma resolução de nomes do
          * painel: evaluators → Comissão de Recursos → null).
          */
@@ -515,6 +739,7 @@ app.component('opportunity-appeal-correction-assignment', {
                 return;
             }
 
+            slot.deadlineOpen = false;
             slot.substitutionOpen = true;
             // Default: o corretor atual (PATCH só é enviado se mudar).
             slot.substituteUserId = review.correctorUserId ?? this.slotUserId(slot);
@@ -522,6 +747,8 @@ app.component('opportunity-appeal-correction-assignment', {
             // null); trocar para "todos marcados" volta a liberar integral.
             slot.substituteScopeCriteria = this.scopeCriteriaIds(review) ?? (this.hasCriteriaSelector ? this.allCriteriaIds() : null);
             slot.substituteScopeOpen = this.hasCriteriaSelector;
+            slot.substituteShowAppealOpinion = this.reviewShowsAppealOpinion(review);
+            slot.substituteShowOriginalValuerName = this.reviewShowsOriginalValuerName(review);
         },
 
         cancelSubstitution(slot) {
@@ -555,7 +782,10 @@ app.component('opportunity-appeal-correction-assignment', {
             try {
                 const response = await api.PATCH(url, {
                     correctorUser: this.normalizeId(slot.substituteUserId),
-                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria),
+                    releasedScope: this.scopePayloadFrom(slot.substituteScopeCriteria, {
+                        showAppealOpinion: slot.substituteShowAppealOpinion,
+                        showOriginalValuerName: slot.substituteShowOriginalValuerName,
+                    }),
                 });
 
                 if (!response.ok) {
@@ -605,6 +835,62 @@ app.component('opportunity-appeal-correction-assignment', {
             } finally {
                 slot.canceling = false;
             }
+        },
+
+        /**
+         * Recebe os valores do mc-datepicker (datetime): emite o objeto de
+         * hora {hours, minutes} ao mexer no relógio e, havendo dia, a Date
+         * combinada. Só o dia escolhido chega como 00:00 — sem hora
+         * informada, o prazo vale até 23:59 do dia.
+         */
+        setSlotDeadline(slot, value, field = 'endsAt') {
+            if (value && !(value instanceof Date) && 'hours' in value) {
+                slot[`${field}TimeSet`] = true;
+                return;
+            }
+
+            if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+                return;
+            }
+
+            const deadline = new Date(value);
+            if (!slot[`${field}TimeSet`]) {
+                deadline.setHours(23, 59, 0, 0);
+            }
+
+            slot[field] = deadline;
+        },
+
+        /**
+         * Limpa o prazo e remonta o mc-datepicker (via key), que guarda o
+         * valor digitado em estado interno.
+         */
+        clearSlotDeadline(slot, field = 'endsAt') {
+            slot[field] = null;
+            slot[`${field}TimeSet`] = false;
+            slot[`${field}Key`] = (slot[`${field}Key`] || 0) + 1;
+        },
+
+        slotDeadlineError(slot, field = 'endsAt') {
+            if (slot[field] && slot[field] <= new Date()) {
+                return this.text('deadline in past');
+            }
+
+            return null;
+        },
+
+        /**
+         * Data local 'AAAA-MM-DD HH:MM' (formato aceito pelo backend), sem
+         * converter para UTC.
+         */
+        toBackendDate(date) {
+            if (!(date instanceof Date)) {
+                return null;
+            }
+
+            const pad = number => String(number).padStart(2, '0');
+
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
         },
 
         formatDate(value) {
@@ -753,8 +1039,13 @@ app.component('opportunity-appeal-correction-assignment', {
                 correctorUser: this.normalizeId(slot.correctorUserId),
                 status: this.config.statusDesignated ?? 0,
                 correctionType: this.config.correctionTypeDefault || 'official',
-                // F6: null = correção integral (todos ou método sem critérios)
-                releasedScope: this.scopePayloadFrom(slot.scopeCriteria),
+                // F6 + CA-4: critérios (se restritos) + visibilidade do ambiente
+                releasedScope: this.scopePayloadFrom(slot.scopeCriteria, {
+                    showAppealOpinion: slot.showAppealOpinion,
+                    showOriginalValuerName: slot.showOriginalValuerName,
+                }),
+                // null = sem prazo (corretor pode corrigir a qualquer momento)
+                endsAt: this.toBackendDate(slot.endsAt),
             };
         },
 

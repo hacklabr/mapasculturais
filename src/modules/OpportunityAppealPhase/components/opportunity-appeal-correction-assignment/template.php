@@ -9,6 +9,7 @@ use MapasCulturais\i;
 $this->import('
     mc-alert
     mc-confirm-button
+    mc-datepicker
     mc-icon
     mc-loading
     mc-modal
@@ -121,6 +122,29 @@ $this->import('
                             <?= i::__('Selecione o corretor para salvar esta designação') ?>
                         </div>
 
+                        <div v-if="slot.checked" class="opportunity-appeal-correction-assignment__deadline">
+                            <label class="semibold" :for="'deadline-' + slot.id"><?= i::__('Prazo final da correção (opcional)') ?></label>
+                            <mc-datepicker
+                                :key="'deadline-' + slot.id + '-' + slot.endsAtKey"
+                                :prop-id="'deadline-' + slot.id"
+                                field-type="datetime"
+                                @update:model-value="setSlotDeadline(slot, $event)">
+                            </mc-datepicker>
+
+                            <div v-if="slotDeadlineError(slot)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                {{ slotDeadlineError(slot) }}
+                            </div>
+                            <div v-else-if="slot.endsAt" class="opportunity-appeal-correction-assignment__slot-hint">
+                                {{ text('deadline until') }} {{ formatDate(slot.endsAt.toISOString()) }}
+                                <button type="button" class="button button--sm button--text primary__color" @click="clearSlotDeadline(slot)">
+                                    <?= i::__('Remover prazo') ?>
+                                </button>
+                            </div>
+                            <div v-else class="opportunity-appeal-correction-assignment__slot-hint">
+                                {{ text('no deadline hint') }}
+                            </div>
+                        </div>
+
                         <!-- F6 (#49): seletor de escopo (só para métodos com critérios) -->
                         <div v-if="slot.checked && hasCriteriaSelector" class="opportunity-appeal-correction-assignment__scope">
                             <button
@@ -162,6 +186,24 @@ $this->import('
                                 </div>
                             </div>
                         </div>
+
+                        <!-- CA-4 / CA-6: o que o corretor pode ver no ambiente -->
+                        <div v-if="slot.checked" class="opportunity-appeal-correction-assignment__visibility">
+                            <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'show-opinion-' + slot.id">
+                                <input
+                                    type="checkbox"
+                                    :id="'show-opinion-' + slot.id"
+                                    v-model="slot.showAppealOpinion">
+                                <span>{{ text('show appeal opinion') }}</span>
+                            </label>
+                            <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'show-valuer-' + slot.id">
+                                <input
+                                    type="checkbox"
+                                    :id="'show-valuer-' + slot.id"
+                                    v-model="slot.showOriginalValuerName">
+                                <span>{{ text('show original valuer name') }}</span>
+                            </label>
+                        </div>
                     </template>
                 </div>
 
@@ -187,7 +229,17 @@ $this->import('
 
                         <div v-if="reviewSentAt(reviewForSlot(slot))" class="opportunity-appeal-correction-assignment__status-detail">
                             <mc-icon name="send"></mc-icon>
-                            <span><?= i::__('Enviada em') ?>: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
+                            <span>{{ reviewSentAtLabel(reviewForSlot(slot)) }}: {{ reviewSentAt(reviewForSlot(slot)) }}</span>
+                        </div>
+
+                        <div class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="eye"></mc-icon>
+                            <span>{{ reviewShowsAppealOpinion(reviewForSlot(slot)) ? text('appeal opinion visible') : text('appeal opinion hidden') }}</span>
+                        </div>
+
+                        <div class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="agent"></mc-icon>
+                            <span>{{ reviewShowsOriginalValuerName(reviewForSlot(slot)) ? text('original valuer visible') : text('original valuer hidden') }}</span>
                         </div>
 
                         <!-- F6: escopo da designação (todos liberados / X de Y) -->
@@ -207,7 +259,16 @@ $this->import('
                                 <?= i::__('Substituir corretor') ?>
                             </button>
 
-                            <mc-confirm-button :loading="slot.canceling || false" @confirm="cancelAssignment(slot)">
+                            <button
+                                class="button button--sm button--text primary__color"
+                                :class="{ 'disabled': slot.substituting || slot.canceling || slot.changingDeadline }"
+                                :disabled="slot.substituting || slot.canceling || slot.changingDeadline"
+                                @click="startDeadlineEdit(slot)">
+
+                                <?= i::__('Alterar prazo') ?>
+                            </button>
+
+                            <mc-confirm-button v-if="canCancelReview(reviewForSlot(slot))" :loading="slot.canceling || false" @confirm="cancelAssignment(slot)">
                                 <template #button="modal">
                                     <button
                                         class="button button--sm button--text-danger"
@@ -222,6 +283,139 @@ $this->import('
                                     <?= i::__('Tem certeza que deseja cancelar esta designação? O slot voltará a ficar disponível para nova designação.') ?>
                                 </template>
                             </mc-confirm-button>
+                        </div>
+
+                        <div v-if="canReopenReview(reviewForSlot(slot)) && !slot.reopenOpen" class="opportunity-appeal-correction-assignment__actions">
+                            <button
+                                class="button button--sm button--text primary__color"
+                                @click="startReopen(slot)">
+
+                                <mc-icon name="edit"></mc-icon>
+                                <?= i::__('Reabrir correção') ?>
+                            </button>
+                        </div>
+
+                        <!-- Alteração de prazo inline (designação ativa) -->
+                        <div v-if="canManageReview(reviewForSlot(slot)) && slot.deadlineOpen" class="opportunity-appeal-correction-assignment__substitution">
+                            <div class="opportunity-appeal-correction-assignment__slot-hint semibold">
+                                <template v-if="reviewDeadline(reviewForSlot(slot))">
+                                    {{ reviewDeadlineExpired(reviewForSlot(slot)) ? text('current deadline expired') : text('current deadline') }}
+                                    {{ reviewDeadline(reviewForSlot(slot)) }}
+                                </template>
+                                <template v-else>{{ text('current no deadline') }}</template>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__deadline">
+                                <label class="semibold" :for="'edit-deadline-' + slot.id"><?= i::__('Novo prazo final') ?></label>
+                                <mc-datepicker
+                                    v-if="!slot.deadlineRemove"
+                                    :key="'edit-deadline-' + slot.id + '-' + slot.deadlineEndsAtKey"
+                                    :prop-id="'edit-deadline-' + slot.id"
+                                    field-type="datetime"
+                                    @update:model-value="setSlotDeadline(slot, $event, 'deadlineEndsAt')">
+                                </mc-datepicker>
+
+                                <label
+                                    v-if="reviewDeadline(reviewForSlot(slot))"
+                                    class="opportunity-appeal-correction-assignment__scope-item"
+                                    :for="'remove-deadline-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'remove-deadline-' + slot.id"
+                                        v-model="slot.deadlineRemove"
+                                        @change="clearSlotDeadline(slot, 'deadlineEndsAt')">
+                                    <span><?= i::__('Remover prazo (corretor pode corrigir a qualquer momento)') ?></span>
+                                </label>
+
+                                <div v-if="slotDeadlineError(slot, 'deadlineEndsAt')" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                    {{ slotDeadlineError(slot, 'deadlineEndsAt') }}
+                                </div>
+                                <div v-else-if="slot.deadlineEndsAt" class="opportunity-appeal-correction-assignment__slot-hint">
+                                    {{ text('deadline until') }} {{ formatDate(slot.deadlineEndsAt.toISOString()) }}
+                                </div>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__substitution-actions">
+                                <button
+                                    class="button button--sm button--primary"
+                                    :class="{ 'disabled': !canConfirmDeadline(slot) }"
+                                    :disabled="!canConfirmDeadline(slot)"
+                                    @click="confirmDeadline(slot)">
+
+                                    {{ slot.changingDeadline ? text('changing deadline') : text('confirm deadline') }}
+                                </button>
+
+                                <button
+                                    class="button button--sm button--text"
+                                    :class="{ 'disabled': slot.changingDeadline }"
+                                    :disabled="slot.changingDeadline"
+                                    @click="cancelDeadlineEdit(slot)">
+
+                                    <?= i::__('Cancelar') ?>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Reabertura inline: prazo atual, novo prazo ou sem prazo -->
+                        <div v-if="canReopenReview(reviewForSlot(slot)) && slot.reopenOpen" class="opportunity-appeal-correction-assignment__substitution">
+                            <div class="opportunity-appeal-correction-assignment__slot-hint">
+                                <?= i::__('O mesmo corretor poderá revisar e enviar novamente. A nota corrigida atual continua valendo até o novo envio. As demais avaliações não são afetadas.') ?>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__slot-hint semibold">
+                                <template v-if="reviewDeadline(reviewForSlot(slot))">
+                                    {{ reviewDeadlineExpired(reviewForSlot(slot)) ? text('current deadline expired') : text('current deadline') }}
+                                    {{ reviewDeadline(reviewForSlot(slot)) }}
+                                </template>
+                                <template v-else>{{ text('current no deadline') }}</template>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__deadline">
+                                <label class="semibold" :for="'reopen-deadline-' + slot.id"><?= i::__('Novo prazo final (opcional)') ?></label>
+                                <mc-datepicker
+                                    v-if="!slot.reopenWithoutDeadline"
+                                    :key="'reopen-deadline-' + slot.id + '-' + slot.reopenEndsAtKey"
+                                    :prop-id="'reopen-deadline-' + slot.id"
+                                    field-type="datetime"
+                                    @update:model-value="setSlotDeadline(slot, $event, 'reopenEndsAt')">
+                                </mc-datepicker>
+
+                                <label class="opportunity-appeal-correction-assignment__scope-item" :for="'reopen-no-deadline-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'reopen-no-deadline-' + slot.id"
+                                        v-model="slot.reopenWithoutDeadline"
+                                        @change="clearSlotDeadline(slot, 'reopenEndsAt')">
+                                    <span><?= i::__('Reabrir sem prazo') ?></span>
+                                </label>
+
+                                <div v-if="reopenDeadlineError(slot)" class="opportunity-appeal-correction-assignment__slot-hint danger__color">
+                                    {{ reopenDeadlineError(slot) }}
+                                </div>
+                                <div v-else-if="slot.reopenEndsAt" class="opportunity-appeal-correction-assignment__slot-hint">
+                                    {{ text('deadline until') }} {{ formatDate(slot.reopenEndsAt.toISOString()) }}
+                                </div>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__substitution-actions">
+                                <button
+                                    class="button button--sm button--primary"
+                                    :class="{ 'disabled': !canConfirmReopen(slot) }"
+                                    :disabled="!canConfirmReopen(slot)"
+                                    @click="reopenAssignment(slot)">
+
+                                    {{ slot.reopening ? text('reopening') : text('confirm reopen') }}
+                                </button>
+
+                                <button
+                                    class="button button--sm button--text"
+                                    :class="{ 'disabled': slot.reopening }"
+                                    :disabled="slot.reopening"
+                                    @click="cancelReopen(slot)">
+
+                                    <?= i::__('Cancelar') ?>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- F5: substituição inline -->
@@ -287,6 +481,25 @@ $this->import('
                                         {{ text('select at least one criterion') }}
                                     </div>
                                 </div>
+                            </div>
+
+                            <div class="opportunity-appeal-correction-assignment__visibility">
+                                <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'sub-show-opinion-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'sub-show-opinion-' + slot.id"
+                                        v-model="slot.substituteShowAppealOpinion"
+                                        :disabled="slot.substituting">
+                                    <span>{{ text('show appeal opinion') }}</span>
+                                </label>
+                                <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'sub-show-valuer-' + slot.id">
+                                    <input
+                                        type="checkbox"
+                                        :id="'sub-show-valuer-' + slot.id"
+                                        v-model="slot.substituteShowOriginalValuerName"
+                                        :disabled="slot.substituting">
+                                    <span>{{ text('show original valuer name') }}</span>
+                                </label>
                             </div>
 
                             <div class="opportunity-appeal-correction-assignment__substitution-actions">

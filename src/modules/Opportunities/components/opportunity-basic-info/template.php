@@ -61,6 +61,7 @@ $this->import('
 
                                 <entity-field :entity="entity" classes="col-12" prop="shortDescription" :max-length="400"></entity-field>
                                 <entity-field :entity="entity" classes="col-12" prop="longDescription"></entity-field>
+                                <?php $this->applyTemplateHook('opportunity-basic-info-information-fields', 'end', ['entity' => $entity]) ?>
                             </div>
                         </template>
                     </mc-collapsible>

@@ -49,6 +49,75 @@ class Module extends \MapasCulturais\Module {
             $result = $self->canDesignatedCorrectorAccessSlot($this, $user);
         });
 
+        // Corretor designado precisa ver o formulário da inscrição (mesmos campos
+        // que o avaliador original) para refazer a análise e corrigir a nota.
+        $app->hook('entity(Registration).canUser(view)', function ($user, &$result) use ($self) {
+            /** @var Registration $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorViewRegistration($this, $user);
+        });
+
+        $app->hook('entity(Registration).canUser(viewPrivateData)', function ($user, &$result) use ($self) {
+            /** @var Registration $this */
+            if ($result || $user->is('guest')) {
+                return;
+            }
+
+            $result = $self->canDesignatedCorrectorViewRegistration($this, $user);
+        });
+
+        // Aba "Correções designadas" em Minhas avaliações: ponto de entrada do corretor
+        $app->hook('component(panel--evaluations-tabs).tabs:end', function () use ($app, $self) {
+            /** @var \MapasCulturais\Themes\BaseV2\Theme $this */
+            if (!$self->isAppealScoreCorrectionEnabled() || $app->user->is('guest')) {
+                return;
+            }
+
+            $assignments_count = $app->repo(RegistrationAppealReview::class)->count([
+                'correctorUser' => $app->user->id,
+            ]);
+
+            if (!$assignments_count) {
+                return;
+            }
+
+            $this->import('panel--appeal-correction-assignments');
+            ?>
+            <mc-tab v-if="!isReportingPhase" label="<?= i::esc_attr__('Correções designadas') ?>" slug="appealCorrections" class="panel-evaluations">
+                <panel--appeal-correction-assignments></panel--appeal-correction-assignments>
+            </mc-tab>
+            <?php
+        });
+
+        // Painel de controle: bloco "Correções designadas" junto às avaliações disponíveis
+        $app->hook('template(panel.index.panel-home-evaluations):after', function () use ($app, $self) {
+            /** @var \MapasCulturais\Themes\BaseV2\Theme $this */
+            if (!$self->isAppealScoreCorrectionEnabled() || $app->user->is('guest')) {
+                return;
+            }
+
+            $assignments_count = $app->repo(RegistrationAppealReview::class)->count([
+                'correctorUser' => $app->user->id,
+            ]);
+
+            if (!$assignments_count) {
+                return;
+            }
+
+            $this->import('panel--appeal-correction-assignments');
+            ?>
+            <panel--appeal-correction-assignments
+                carousel
+                available-only
+                hide-when-empty
+                title="<?= i::esc_attr__('Correções designadas') ?>"
+            ></panel--appeal-correction-assignments>
+            <?php
+        });
+
         // PR5 (issue #15): notifica corretor designado quando a designação é criada
         $app->hook('entity(OpportunityAppealPhase.Entities.RegistrationAppealReview).insert:after', function () {
             /** @var RegistrationAppealReview $this */
@@ -71,6 +140,22 @@ class Module extends \MapasCulturais\Module {
         $app->hook('ApiQuery(registration).findResult', function (&$result) use ($self) {
             $self->enrichRegistrationScoreColumns($result);
             $self->enrichPreliminaryResultSnapshot($result);
+        });
+
+        $app->hook('entity(EvaluationMethodConfiguration).save:before', function() use ($self) {
+            /** @var EvaluationMethodConfiguration $this */
+            // Na criação, OpportunityPhases ainda pode mudar a oportunidade da avaliação.
+            if (!$this->isNew()) {
+                $self->syncAppealPhaseName($this->opportunity, $this->name);
+            }
+        });
+
+        $app->hook('entity(Opportunity).save:before', function() use ($self) {
+            /** @var Opportunity $this */
+            if (!$this->isNew()) {
+                $phase_name = $this->evaluationMethodConfiguration?->name ?? $this->name;
+                $self->syncAppealPhaseName($this, $phase_name);
+            }
         });
 
         /* Endpoint de criação de fase de recurso na oportunidade */
@@ -111,8 +196,9 @@ class Module extends \MapasCulturais\Module {
             $appeal_phase = new $class_name();
             $appeal_phase->parent = $opportunity;
             $appeal_phase->status = Opportunity::STATUS_APPEAL_PHASE;
-            $appeal_phase->name = sprintf(i::__('Recurso para %s'), $phase_name);
+            $appeal_phase->name = self::buildAppealPhaseName($phase_name);
             $appeal_phase->ownerEntity = $opportunity->ownerEntity;
+            $appeal_phase->type = $opportunity->type;
             $appeal_phase->registrationCategories = $opportunity->registrationCategories;
             $appeal_phase->registrationRanges = $opportunity->registrationRanges;
             $appeal_phase->registrationProponentTypes = $opportunity->registrationProponentTypes;
@@ -489,6 +575,31 @@ class Module extends \MapasCulturais\Module {
         return false;
     }
 
+    /**
+     * Corretor com designação (ativa ou já enviada) na inscrição pode ver o
+     * formulário — necessário para o embed `registrationevaluationtionformview`
+     * na página de correção.
+     */
+    public function canDesignatedCorrectorViewRegistration(Registration $registration, $user): bool
+    {
+        if (!$this->isAppealScoreCorrectionEnabled() || $user->is('guest')) {
+            return false;
+        }
+
+        $statuses = array_merge(
+            RegistrationAppealReview::getActiveStatuses(),
+            [RegistrationAppealReview::STATUS_SENT]
+        );
+
+        $count = App::i()->repo(RegistrationAppealReview::class)->count([
+            'registration' => $registration,
+            'correctorUser' => $user,
+            'status' => $statuses,
+        ]);
+
+        return $count > 0;
+    }
+
     // ============================================================ //
     // F4 (#20) — CA-11: propriedades computadas de nota
     // ============================================================ //
@@ -634,7 +745,14 @@ class Module extends \MapasCulturais\Module {
             }
         }
 
-        $rows = $this->fetchScoresByRegistration($registration_ids);
+        // Linha da fase de recurso: as notas (e correções) estão na inscrição
+        // de mesmo número na fase principal, não na avaliação do recurso.
+        $score_source = $this->mapAppealToMainRegistrations($registration_ids);
+
+        $rows = $this->fetchScoresByRegistration(array_values(array_unique(array_merge(
+            $registration_ids,
+            array_values($score_source)
+        ))));
 
         $by_registration = [];
         foreach ($rows as $row) {
@@ -649,7 +767,8 @@ class Module extends \MapasCulturais\Module {
 
         foreach ($result as &$row) {
             $registration_id = (int) ($row['id'] ?? 0);
-            $evaluations = $by_registration[$registration_id] ?? [];
+            $source_id = $score_source[$registration_id] ?? $registration_id;
+            $evaluations = $by_registration[$source_id] ?? [];
 
             $corrected_values = [];
             $original_values = [];
@@ -694,8 +813,8 @@ class Module extends \MapasCulturais\Module {
         $app = App::i();
         $ids = implode(',', array_map('intval', $evaluation_ids));
 
-        // r.status = 2 = RegistrationAppealReview::STATUS_SENT (correção aplicada);
-        // menor id = primeira correção do slot.
+        // sent_timestamp preenchido = correção aplicada (inclui designação
+        // reaberta após envio); menor id = primeira correção do slot.
         $rows = $app->em->getConnection()->fetchAllAssociative("
             SELECT
                 ev.id,
@@ -703,7 +822,7 @@ class Module extends \MapasCulturais\Module {
                 (
                     SELECT r.original_score
                     FROM registration_appeal_review r
-                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
                 ) AS original_score
@@ -720,6 +839,43 @@ class Module extends \MapasCulturais\Module {
         }
 
         return $snapshot;
+    }
+
+    /**
+     * Para inscrições de fase de recurso, a inscrição de mesmo número na fase
+     * principal (oportunidade cujo metadado `appealPhase` aponta para a fase
+     * de recurso, serializado como "<classe>:<id>").
+     *
+     * @param int[] $registration_ids
+     * @return array<int, int> id da inscrição do recurso => id da inscrição principal
+     */
+    private function mapAppealToMainRegistrations(array $registration_ids): array
+    {
+        if (!$registration_ids) {
+            return [];
+        }
+
+        $app = App::i();
+        $ids = implode(',', array_map('intval', $registration_ids));
+
+        $rows = $app->em->getConnection()->fetchAllAssociative("
+            SELECT appeal_reg.id AS appeal_id, main_reg.id AS main_id
+            FROM registration appeal_reg
+            JOIN opportunity_meta om
+                ON om.key = 'appealPhase'
+                AND split_part(om.value, ':', 2) = appeal_reg.opportunity_id::text
+            JOIN registration main_reg
+                ON main_reg.opportunity_id = om.object_id
+                AND main_reg.number = appeal_reg.number
+            WHERE appeal_reg.id IN ({$ids})
+        ");
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(int) $row['appeal_id']] = (int) $row['main_id'];
+        }
+
+        return $map;
     }
 
     /**
@@ -745,7 +901,7 @@ class Module extends \MapasCulturais\Module {
                 (
                     SELECT r.original_score
                     FROM registration_appeal_review r
-                    WHERE r.original_evaluation_id = ev.id AND r.status = 2
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
                 ) AS original
@@ -768,9 +924,56 @@ class Module extends \MapasCulturais\Module {
         return is_numeric($value) ? (float) $value : null;
     }
 
-    private function isAppealScoreCorrectionEnabled(): bool
+    public function isAppealScoreCorrectionEnabled(): bool
     {
         return (bool) env('APPEAL_SCORE_CORRECTION', $this->config['featureFlag.appealScoreCorrection']);
+    }
+
+    /**
+     * Mantém o formato automático, inclusive o legado, e preserva títulos fora desses formatos.
+     * Sem nome anterior, usa o formato atual de criação do recurso.
+     */
+    public static function buildAppealPhaseName(string $phase_name, ?string $previous_name = null): ?string
+    {
+        $templates = $previous_name === null ? [i::__('Recurso para %s')] : array_unique([
+            i::__('Recurso para %s'),
+            i::__('Fase de recurso para %s'),
+            'Recurso para %s',
+            'Fase de recurso para %s',
+        ]);
+
+        foreach ($templates as $template) {
+            [$prefix, $suffix] = explode('%s', $template, 2);
+            if ($previous_name !== null && (!str_starts_with($previous_name, $prefix) || !str_ends_with($previous_name, $suffix))) {
+                continue;
+            }
+
+            return mb_substr(sprintf($template, $phase_name), 0, 255, 'UTF-8');
+        }
+
+        return null;
+    }
+
+    public function syncAppealPhaseName(Opportunity $opportunity, string $phase_name): void
+    {
+        if ($opportunity->isAppealPhase || $opportunity->status === Opportunity::STATUS_APPEAL_PHASE) {
+            return;
+        }
+
+        $appeal_phase = $opportunity->appealPhase;
+        if (!$appeal_phase || $appeal_phase->status !== Opportunity::STATUS_APPEAL_PHASE || !$appeal_phase->parent?->equals($opportunity)) {
+            return;
+        }
+
+        $name = self::buildAppealPhaseName($phase_name, $appeal_phase->name);
+        if ($name === null || $name === $appeal_phase->name) {
+            return;
+        }
+
+        $appeal_phase->checkPermission('modify');
+        // A entidade já está gerenciada pelo Doctrine. O flush do pai persiste o nome
+        // sem executar novamente os hooks de save do recurso, que reagendam jobs.
+        $appeal_phase->name = $name;
     }
 
     /**

@@ -15,9 +15,23 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview;
  * GET /appealCorrector/environment/{assignmentId}  -> read-only JSON payload
  * GET /appealCorrector/correction/{assignmentId}   -> correction page (dumb page:
  *    permission/deadline/feature flag checks belong to the environment endpoint)
+ * GET /appealCorrector/assignments                  -> active assignments of the logged user
  */
 class AppealCorrector extends Controller
 {
+    function GET_assignments()
+    {
+        $this->requireAuthentication();
+
+        $app = App::i();
+
+        if (!(bool) env('APPEAL_SCORE_CORRECTION', false)) {
+            $this->errorJson(i::__('Correção de notas por recurso desabilitada'), 404);
+        }
+
+        $this->json((new CorrectorEnvironment())->listForCorrector($app->user));
+    }
+
     function GET_environment()
     {
         $this->requireAuthentication();

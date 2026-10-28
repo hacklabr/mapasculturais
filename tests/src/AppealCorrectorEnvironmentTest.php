@@ -45,7 +45,11 @@ class AppealCorrectorEnvironmentTest extends TestCase
      *   appealRegistration: ?Registration
      * }
      */
-    private function createScenario(bool $show_opinion = false, bool $with_appeal_opinion = false): array
+    private function createScenario(
+        bool $show_opinion = false,
+        bool $with_appeal_opinion = false,
+        ?bool $show_original_valuer_name = null,
+    ): array
     {
         $this->enableFlag();
 
@@ -164,10 +168,11 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $review->correctorUser = $corrector;
         $review->status = RegistrationAppealReview::STATUS_DRAFT;
         $review->correctionType = RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL;
-        $review->releasedScope = (object) [
+        $review->releasedScope = (object) array_filter([
             'criteria' => ['c-1'],
             'showAppealOpinion' => $show_opinion,
-        ];
+            'showOriginalValuerName' => $show_original_valuer_name,
+        ], static fn ($value) => $value !== null);
         $review->startsAt = new DateTime('-1 hour');
         $review->endsAt = new DateTime('+1 day');
         $review->originalValue = $slot_a->getEvaluationData();
@@ -197,6 +202,9 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->login($scenario['corrector']);
         $payload = $builder->build($scenario['review']);
         $this->assertEquals($scenario['review']->id, $payload['assignmentId']);
+        $this->assertArrayHasKey('registrationContext', $payload);
+        $this->assertEquals($scenario['registration']->id, $payload['registrationContext']['id']);
+        $this->assertEquals($scenario['registration']->number, $payload['registrationContext']['number']);
 
         $this->login($scenario['outsider']);
         $this->expectException(PermissionDenied::class);
@@ -244,7 +252,43 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertArrayHasKey('committeeOpinion', $payload);
         $this->assertNotNull($payload['committeeOpinion']);
         $this->assertEquals($scenario['appealRegistration']->id, $payload['committeeOpinion']['registrationId']);
-        $this->assertNotEmpty($payload['committeeOpinion']['evaluations']);
+        $this->assertEquals('continuous', $payload['committeeOpinion']['method']);
+        $this->assertNotEmpty($payload['committeeOpinion']['evaluationsDetails']);
+        $this->assertArrayHasKey('obs', $payload['committeeOpinion']['evaluationsDetails'][0]);
+        $this->assertArrayHasKey('valuer', $payload['committeeOpinion']['evaluationsDetails'][0]);
+    }
+
+    function testOriginalValuerNamePresentByDefault(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['corrector']);
+
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+        $this->assertArrayHasKey('targetEvaluatorName', $payload);
+        $this->assertNotEmpty($payload['targetEvaluatorName']);
+    }
+
+    function testOriginalValuerNameAbsentWhenFlagFalse(): void
+    {
+        $scenario = $this->createScenario(show_original_valuer_name: false);
+        $this->login($scenario['corrector']);
+
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+        $this->assertArrayNotHasKey('targetEvaluatorName', $payload);
+
+        $items = (new CorrectorEnvironment())->listForCorrector($scenario['corrector']);
+        $this->assertNotEmpty($items);
+        $this->assertNull($items[0]['targetEvaluatorName']);
+    }
+
+    function testOriginalValuerNamePresentWhenFlagTrue(): void
+    {
+        $scenario = $this->createScenario(show_original_valuer_name: true);
+        $this->login($scenario['corrector']);
+
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+        $this->assertArrayHasKey('targetEvaluatorName', $payload);
+        $this->assertNotEmpty($payload['targetEvaluatorName']);
     }
 
     function testEndpointHttpHappyPath(): void
@@ -327,6 +371,81 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertEquals('Seção 1', $criterion['sectionName']);
     }
 
+    function testAssignmentsListOnlyOfLoggedCorrectorWithSentAsHistory(): void
+    {
+        $scenario = $this->createScenario();
+        $builder = new CorrectorEnvironment();
+
+        $this->login($scenario['corrector']);
+        $items = $builder->listForCorrector($scenario['corrector']);
+        $this->assertCount(1, $items);
+        $this->assertEquals($scenario['review']->id, $items[0]['assignmentId']);
+        $this->assertEquals($scenario['registration']->number, $items[0]['registrationNumber']);
+        $this->assertEquals((int) $scenario['registration']->opportunity->id, $items[0]['opportunityId']);
+        $this->assertEquals(
+            (int) ($scenario['registration']->opportunity->firstPhase->id ?? $scenario['registration']->opportunity->id),
+            $items[0]['firstPhaseId']
+        );
+        $this->assertEquals('draft', $items[0]['status']);
+        $this->assertTrue($items[0]['available']);
+        $this->assertEquals(CorrectorEnvironment::correctionUrl($scenario['review']), $items[0]['correctionUrl']);
+
+        $this->login($scenario['outsider']);
+        $this->assertSame([], $builder->listForCorrector($scenario['outsider']));
+
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->status = RegistrationAppealReview::STATUS_SENT;
+        $scenario['review']->sentTimestamp = new DateTime();
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $items = $builder->listForCorrector($scenario['corrector']);
+        $this->assertCount(1, $items);
+        $this->assertEquals('sent', $items[0]['status']);
+        $this->assertFalse($items[0]['available']);
+        $this->assertNotNull($items[0]['sentAt']);
+    }
+
+    function testAssignmentsListFlagsExpiredWindowAsUnavailable(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->startsAt = new DateTime('-2 days');
+        $scenario['review']->endsAt = new DateTime('-1 day');
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $items = (new CorrectorEnvironment())->listForCorrector($scenario['corrector']);
+
+        $this->assertCount(1, $items);
+        $this->assertFalse($items[0]['available']);
+    }
+
+    function testAssignmentsEndpointHttpHappyPath(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['corrector']);
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'assignments',
+            ajax: true
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(200, $app->response->getStatusCode());
+        $body = json_decode((string) $app->response->getBody(), true);
+        $this->assertCount(1, $body);
+        $this->assertEquals($scenario['review']->id, $body[0]['assignmentId']);
+    }
+
     function testCorrectionPageRendersForCorrector(): void
     {
         $scenario = $this->createScenario();
@@ -347,5 +466,41 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $body = (string) $app->response->getBody();
         $this->assertStringContainsString('opportunity-appeal-correction-evaluation', $body);
         $this->assertStringContainsString((string) $scenario['review']->id, $body);
+        $this->assertStringContainsString('registrationevaluationtionformview', $body);
+    }
+
+    function testDesignatedCorrectorCanViewRegistrationForm(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->enableAccessControl();
+
+        $registration = $scenario['registration'];
+        $outsider = $this->userDirector->createUser();
+        /** @var \OpportunityAppealPhase\Module $module */
+        $module = $app->modules['OpportunityAppealPhase'];
+
+        $this->assertFalse(
+            $module->canDesignatedCorrectorViewRegistration($registration, $outsider),
+            'Sem designação, o módulo não libera visão do formulário.'
+        );
+
+        $app->disableAccessControl();
+        $scenario['review']->correctorUser = $outsider;
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->assertTrue(
+            $module->canDesignatedCorrectorViewRegistration($registration, $outsider),
+            'Com designação, o módulo libera visão do formulário.'
+        );
+        $this->assertTrue(
+            $registration->canUser('view', $outsider),
+            'Corretor designado deve ver a inscrição para consultar o formulário.'
+        );
+        $this->assertTrue(
+            $registration->canUser('viewPrivateData', $outsider),
+            'Corretor designado deve ver os campos privados do formulário.'
+        );
     }
 }

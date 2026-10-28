@@ -8,7 +8,17 @@ app.component('opportunity-registrations-table', {
         visibleColumns: {
             // F4 (#20): médias de nota visíveis por padrão (CA-11)
             type: Array,
-            default: ["agent", "status", "category", "consolidatedResult", "averageOriginalScore", "averageCorrectedScore", "scoreDifference", "editable","updateTimestamp","sentTimestamp","createTimestamp"],
+            default: [
+                "number",
+                "agent",
+                "consolidatedResult",
+                "appliedPointReward",
+                "score",
+                "averageOriginalScore",
+                "averageCorrectedScore",
+                "scoreDifference",
+                "status",
+            ],
         },
         identifier: {
             type: String,
@@ -374,27 +384,27 @@ app.component('opportunity-registrations-table', {
                 });
             }
 
-            const type = this.phase.evaluationMethodConfiguration?.type?.id;
-            const phases = $MAPAS.opportunityPhases;
-            let hasEvaluationMethodTechnical = false;
-
-            for (const phase of phases){
-                if(phase.id == this.phase.id){
-                    break;
+            // Pontuação final (score = avaliação + bônus). Exibir na fase técnica,
+            // em fases posteriores a uma técnica, na publicação do resultado, ou
+            // quando o edital tem (ou terá) fase técnica — senão o default de
+            // sistema (Avaliação/Bônus/Pontuação) some na lista da 1ª fase.
+            if(this.shouldShowScoreColumn) {
+                if(!itens.some(item => item.value === 'score')) {
+                    itens.push({
+                        text: this.text('Pontuação'),
+                        value: 'score',
+                    });
                 }
-
-                const phaseType = phase.evaluationMethodConfiguration ? phase.evaluationMethodConfiguration.type?.id : phase.type.id;
-
-                if(phaseType == "technical"){
-                    hasEvaluationMethodTechnical = true;
-                    break;
-                }
+            } else {
+                itens = itens.filter(item => !['score', 'appliedPointReward'].includes(item.value));
             }
 
-            const itensToRemove = ["score", "eligible"];
-            
-            if(type != "technical" || !this.hasEvaluationMethodTechnical) {
-                itens = itens.filter(item => !itensToRemove.includes(item.value));
+            // Mantém Avaliação → Bônus → Pontuação sempre lado a lado
+            itens = this.groupScoreRelatedColumns(itens);
+
+            // eligible só faz sentido com políticas afirmativas / contexto técnico
+            if(!(this.isTechnicalEvaluationPhase || this.hasEvaluationMethodTechnical)) {
+                itens = itens.filter(item => item.value !== 'eligible');
             }
 
             if(this.avaliableColumns) {
@@ -405,6 +415,30 @@ app.component('opportunity-registrations-table', {
 
             return itens;
         },
+        /**
+         * True se qualquer fase do edital for avaliação técnica (incluindo
+         * fases futuras). hadTechnicalEvaluationPhase / hasEvaluationMethodTechnical
+         * só olham para trás — na 1ª fase isso escondia Pontuação mesmo com
+         * fase técnica no edital (ex.: /lista-de-inscricoes/98/ com fase 107).
+         */
+        opportunityHasTechnicalEvaluation() {
+            const phases = $MAPAS.opportunityPhases || [];
+            return phases.some((phase) => {
+                const typeId = phase.evaluationMethodConfiguration?.type?.id
+                    ?? phase.type?.id
+                    ?? phase.type;
+                return typeId === 'technical';
+            });
+        },
+        shouldShowScoreColumn() {
+            return !!(
+                this.isTechnicalEvaluationPhase
+                || this.hasEvaluationMethodTechnical
+                || this.hadTechnicalEvaluationPhase
+                || this.phase.isLastPhase
+                || this.opportunityHasTechnicalEvaluation
+            );
+        },
         select() {
             let avaliableFields = this.avaliableFields.map((item) => item.fieldName);
             
@@ -414,11 +448,21 @@ app.component('opportunity-registrations-table', {
                 avaliableFields.push('tiebreaker')
             }
 
-            let fields = [...this.default_select.split(','), ...avaliableFields]; 
-            const itensToRemove = ["score", "eligible"];
-            
-            if(!this.isTechnicalEvaluationPhase || !this.hasEvaluationMethodTechnical) {
-                fields = fields.filter(item => !itensToRemove.includes(item));
+            let fields = [...this.default_select.split(','), ...avaliableFields];
+
+            if(this.shouldShowScoreColumn && !fields.includes('score')) {
+                fields.push('score');
+            }
+            if(this.shouldShowScoreColumn && !fields.includes('appliedPointReward')) {
+                fields.push('appliedPointReward');
+            }
+
+            if(!this.shouldShowScoreColumn) {
+                fields = fields.filter(item => item !== 'score' && item !== 'appliedPointReward');
+            }
+
+            if(!(this.isTechnicalEvaluationPhase || this.hasEvaluationMethodTechnical)) {
+                fields = fields.filter(item => item !== 'eligible');
             }
             
             return fields.join(',');
@@ -455,6 +499,56 @@ app.component('opportunity-registrations-table', {
             registration.scoreDifference = rawData.scoreDifference ?? null;
 
             return registration;
+        },
+
+        /**
+         * Agrupa Avaliação → Bônus por pontuação → Pontuação (nota final).
+         */
+        groupScoreRelatedColumns(itens) {
+            const groupOrder = ['consolidatedResult', 'appliedPointReward', 'score'];
+            const groupItems = [];
+            const rest = [];
+
+            for (const item of itens) {
+                const key = item.value || item.slug;
+                if (groupOrder.includes(key)) {
+                    groupItems.push(item);
+                } else {
+                    rest.push(item);
+                }
+            }
+
+            if (!groupItems.length) {
+                return itens;
+            }
+
+            const byKey = {};
+            for (const item of groupItems) {
+                byKey[item.value || item.slug] = item;
+            }
+            const orderedGroup = groupOrder.map(key => byKey[key]).filter(Boolean);
+
+            // Insere o bloco na posição da primeira coluna do grupo que existia
+            let insertAt = itens.findIndex(item => groupOrder.includes(item.value || item.slug));
+            if (insertAt < 0) {
+                insertAt = Math.min(2, rest.length);
+            }
+            // Ajusta insertAt para o índice equivalente em `rest`
+            let restInsertAt = 0;
+            let seen = 0;
+            for (let i = 0; i < itens.length && seen < insertAt; i++) {
+                const key = itens[i].value || itens[i].slug;
+                if (!groupOrder.includes(key)) {
+                    restInsertAt++;
+                }
+                seen++;
+            }
+
+            return [
+                ...rest.slice(0, restInsertAt),
+                ...orderedGroup,
+                ...rest.slice(restInsertAt),
+            ];
         },
 
         getStatus(actualStatus) {

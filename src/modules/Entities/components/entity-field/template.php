@@ -32,7 +32,7 @@ $this->import('
     <?php $this->applyTemplateHook('entity-field-label','before') ?>
     <label class="field__title" v-if="!hideLabel && !is('checkbox')" :for="propId">
         <slot>{{label || description.label}}</slot>
-        <span v-if="description.required && !hideRequired" class="required">*<?php i::_e('obrigatório') ?></span>
+        <span v-if="(required === true || (required === null && description.required)) && !hideRequired" class="required">*<?php i::_e('obrigatório') ?></span>
         <slot name="info"></slot>
     </label>
     <?php $this->applyTemplateHook('entity-field-label','after') ?>
@@ -153,8 +153,9 @@ $this->import('
 
             <template v-else-if="is('boolean')">
                 <select :value="value" :id="propId" :name="prop" @input="change($event)" @blur="change($event,true)" :disabled="readonly || disabled">
+                    <option v-if="value === null || value === undefined || value === ''" value="" disabled selected> <?= i::_e('Selecione')?> </option>
                     <option :value='true' :selected="value"> <?= i::_e('Sim')?> </option>
-                    <option :value='false' :selected="!value"> <?= i::_e('Não')?>  </option>
+                    <option :value='false' :selected="value !== null && value !== undefined && value !== '' && !value"> <?= i::_e('Não')?>  </option>
                 </select>
             </template>
 
