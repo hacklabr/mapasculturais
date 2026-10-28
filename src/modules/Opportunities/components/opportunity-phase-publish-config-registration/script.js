@@ -38,8 +38,9 @@ app.component('opportunity-phase-publish-config-registration' , {
          * Guard de instância (R02/#65 — risco D3): este componente também é
          * instanciado para a fase de recurso, via opportunity-appeal-phase-config
          * (-> opportunity-phase-status e -> opportunity-phase-list-evaluation).
-         * O botão "Publicar resultado final" (sempre disponível) só deve existir
-         * na instância da fase principal; o contexto de recurso repassa false.
+         * R02: "Publicar resultado final" só na fase principal (recurso
+         * repassa false). R03 (#76): com false, o dois-estágios fica oculto
+         * e entram os botões próprios do recurso.
          */
         mainPhaseOnly: {
             type: Boolean,
@@ -107,8 +108,8 @@ app.component('opportunity-phase-publish-config-registration' , {
             return this.mainPhaseOnly && !this.isAppealPhase;
         },
         /**
-         * Instância da fase de recurso: publicação em estágio único, como
-         * antes do R02 (sem preliminar/final).
+         * Instância da fase de recurso: publicação em estágio único (R03/#76),
+         * sem preliminar/final da fase principal.
          */
         isAppealInstance() {
             return !this.showFinalPublishButton;
@@ -142,14 +143,36 @@ app.component('opportunity-phase-publish-config-registration' , {
             const messages = useMessages();
             this.phase.POST('publishRegistrations', this.phase).then(item => {
                 this.phase.publishedRegistrations = true;
-                messages.success(this.text(this.isAppealInstance ? 'sucesso_publicar' : 'sucesso_publicar_final'));
+                messages.success(this.text('sucesso_publicar_final'));
             });
         },
         unpublishRegistration () {
             const messages = useMessages();
             this.phase.POST('unpublishRegistrations', this.phase).then(item => {
                 this.phase.publishedRegistrations = false;
-                messages.success(this.text(this.isAppealInstance ? 'sucesso_despublicar' : 'sucesso_despublicar_final'));
+                messages.success(this.text('sucesso_despublicar_final'));
+            });
+        },
+        /**
+         * R03 (#76): mesma ação do publicar final (POST publishRegistrations),
+         * com mensagem de sucesso própria do contexto de recurso.
+         */
+        publishAppealRegistration () {
+            const messages = useMessages();
+            this.phase.POST('publishRegistrations', this.phase).then(item => {
+                this.phase.publishedRegistrations = true;
+                messages.success(this.text('sucesso_publicar_recurso'));
+            });
+        },
+        /**
+         * R03 (#76): mesma ação do despublicar final (POST unpublishRegistrations),
+         * com mensagem de sucesso própria do contexto de recurso.
+         */
+        unpublishAppealRegistration () {
+            const messages = useMessages();
+            this.phase.POST('unpublishRegistrations', this.phase).then(item => {
+                this.phase.publishedRegistrations = false;
+                messages.success(this.text('sucesso_despublicar_recurso'));
             });
         }
     }

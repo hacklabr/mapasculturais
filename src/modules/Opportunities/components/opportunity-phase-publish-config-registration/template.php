@@ -168,29 +168,37 @@ $this->import('
                     </mc-confirm-button>
                 </div>
             </div>
-            <!-- Fase de recurso: publicação em estágio único, como antes do R02 -->
-            <div v-if="isAppealInstance" class="col-12 opportunity-phase-publish-config-registration__actions">
-                <div v-if="!phase.publishedRegistrations">
-                    <mc-confirm-button yes="<?= i::__('Publicar Resultado')?>" @confirm="publishRegistration()">
+            <!--
+                R03 (#76): fase de recurso — estágio único (sem preliminar).
+                Mesma ação do publicar/despublicar final (POST publishRegistrations
+                / unpublishRegistrations, com selos), copy próprio. Gate phaseEnded
+                (#72) no publicar; despublicar sempre que já publicado.
+            -->
+            <div v-if="isAppealInstance && (phaseEnded || phase.publishedRegistrations)" class="col-12 opportunity-phase-publish-config-registration__actions">
+                <div v-if="!phase.publishedRegistrations && phaseEnded">
+                    <mc-confirm-button yes="<?= i::__('Publicar resultado do recurso')?>" @confirm="publishAppealRegistration()">
                         <template #button="modal">
                             <button :class="['button', 'button--primary', {'button--bg': phase.isLastPhase}]" @click="modal.open()">
-                                <?= i::__("Publicar Resultados") ?>
+                                <?= i::__("Publicar resultado do recurso") ?>
                             </button>
                         </template>
                         <template #message="message">
-                            <h3 class="bold"><?= i::__("Deseja publicar os resultados?")?></h3>
+                            <h3 class="bold"><?= i::__("Deseja publicar o resultado do recurso?")?></h3>
                             <p class="message"><strong>
-                                <?= i::__("Antes de publicar os resultados, verifique cuidadosamente se todas as inscrições foram avaliadas e aplicadas.") ?></strong>
-                                <?= i::__("Com essa ação o resultado da fase ficará público.")?>
+                                <?= i::__("Antes de publicar o resultado do recurso, verifique cuidadosamente se todos os recursos foram avaliados e aplicados.") ?></strong>
+                                <?= i::__("Com essa ação o resultado do recurso ficará público e os selos serão aplicados às inscrições selecionadas.")?>
+                            </p>
+                            <p class="message">
+                                <?= i::__("Atenção: se o resultado do recurso já estiver publicado, ele será <strong>publicado novamente</strong> e os selos serão <strong>reaplicados</strong>, sobrescrevendo ajustes de selos feitos manualmente após a publicação.")?>
                             </p>
                         </template>
                     </mc-confirm-button>
                 </div>
-                <div v-if="phase.publishedRegistrations && (!firstPhase?.isContinuousFlow || (firstPhase?.isContinuousFlow && firstPhase?.hasEndDate))">
-                    <mc-confirm-button :message="text('despublicar')" @confirm="unpublishRegistration()">
+                <div v-if="phase.publishedRegistrations">
+                    <mc-confirm-button yes="<?= i::__('Despublicar resultado do recurso')?>" :message="text('despublicar_recurso')" @confirm="unpublishAppealRegistration()">
                         <template #button="modal">
                             <button class="button button--primary-outline" @click="modal.open()">
-                                <?= i::__("Despublicar") ?>
+                                <?= i::__("Despublicar resultado do recurso") ?>
                             </button>
                         </template>
                     </mc-confirm-button>
