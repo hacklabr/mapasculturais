@@ -272,6 +272,20 @@ $this->import('
                                 <span>{{ text('show original valuer name') }}</span>
                             </label>
                         </div>
+
+                        <!-- R06 (#134) — CA-21: autoaplicação do resultado (somente método não-técnico, default desmarcado) -->
+                        <div v-if="slot.checked && autoApplyAvailable" class="opportunity-appeal-correction-assignment__visibility">
+                            <label class="opportunity-appeal-correction-assignment__visibility-item" :for="'auto-apply-' + slot.id">
+                                <input
+                                    type="checkbox"
+                                    :id="'auto-apply-' + slot.id"
+                                    v-model="slot.autoApply">
+                                <span>{{ text('auto apply result') }}</span>
+                            </label>
+                            <div class="opportunity-appeal-correction-assignment__slot-hint">
+                                {{ text('auto apply hint') }}
+                            </div>
+                        </div>
                     </template>
                 </div>
 
@@ -316,6 +330,12 @@ $this->import('
                             <span>{{ reviewScopeLabel(reviewForSlot(slot)) }}</span>
                         </div>
 
+                        <!-- R06 (#134) — CA-21: estado da autoaplicação -->
+                        <div v-if="autoApplyAvailable" class="opportunity-appeal-correction-assignment__status-detail">
+                            <mc-icon name="send"></mc-icon>
+                            <span>{{ reviewForSlot(slot).autoApply ? text('auto apply enabled') : text('auto apply disabled') }}</span>
+                        </div>
+
                         <div v-if="hasFormFieldsSelector" class="opportunity-appeal-correction-assignment__status-detail">
                             <mc-icon name="list"></mc-icon>
                             <span>{{ reviewFormFieldsLabel(reviewForSlot(slot)) }}</span>
@@ -339,6 +359,17 @@ $this->import('
                                 @click="startDeadlineEdit(slot)">
 
                                 <?= i::__('Alterar prazo') ?>
+                            </button>
+
+                            <!-- R06 (#134) — CA-21: alternar autoaplicação (designação ativa, método não-técnico) -->
+                            <button
+                                v-if="autoApplyAvailable"
+                                class="button button--sm button--text primary__color"
+                                :class="{ 'disabled': slot.togglingAutoApply || slot.substituting || slot.canceling }"
+                                :disabled="slot.togglingAutoApply || slot.substituting || slot.canceling"
+                                @click="toggleAutoApply(slot)">
+
+                                {{ reviewForSlot(slot).autoApply ? text('disable auto apply') : text('enable auto apply') }}
                             </button>
 
                             <mc-confirm-button v-if="canCancelReview(reviewForSlot(slot))" :loading="slot.canceling || false" @confirm="cancelAssignment(slot)">

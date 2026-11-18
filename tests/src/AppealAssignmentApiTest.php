@@ -48,8 +48,9 @@ class AppealAssignmentApiTest extends TestCase
     }
 
     /**
-     * Cenário: fase técnica com 2 slots (avaliadores A e B), fase de recurso com
-     * Comissão de Recursos (committeeUser) e usuários de controle.
+     * Cenário: fase (método parametrizado — technical default) com 2 slots
+     * (avaliadores A e B), fase de recurso com Comissão de Recursos
+     * (committeeUser) e usuários de controle.
      *
      * @return array{
      *   admin: User, slotOwnerA: User, slotOwnerB: User,
@@ -59,7 +60,7 @@ class AppealAssignmentApiTest extends TestCase
      *   appealPhase: Opportunity
      * }
      */
-    private function createScenario(): array
+    private function createScenario(EvaluationMethods $method = EvaluationMethods::technical): array
     {
         $this->enableFlag();
 
@@ -78,7 +79,7 @@ class AppealAssignmentApiTest extends TestCase
                 ->setRegistrationPeriod(new Open)
                 ->done()
             ->save()
-            ->addEvaluationPhase(EvaluationMethods::technical)
+            ->addEvaluationPhase($method)
                 ->fillRequiredProperties()
                 ->setEvaluationPeriod(new ConcurrentEndingAfter)
                 ->save()
@@ -113,7 +114,7 @@ class AppealAssignmentApiTest extends TestCase
         $appeal_phase = new $appeal_phase_class();
         $appeal_phase->parent = $opportunity;
         $appeal_phase->status = Opportunity::STATUS_APPEAL_PHASE;
-        $appeal_phase->name = 'Fase de recurso técnica';
+        $appeal_phase->name = 'Fase de recurso ' . $method->name;
         $appeal_phase->ownerEntity = $opportunity->ownerEntity;
         $appeal_phase->owner = $opportunity->owner;
         $appeal_phase->registrationCategories = $opportunity->registrationCategories;
@@ -1049,5 +1050,292 @@ class AppealAssignmentApiTest extends TestCase
 
         $this->assertEquals(400, $deleted['status'], 'Correção já aplicada (mesmo reaberta) não pode ser apagada.');
         $this->assertNotNull($this->findReview($review_id), 'Registro da nota original deve ser preservado.');
+    }
+
+    // ============================================================ //
+    // R06 (#134) — CA-21: autoaplicação (POST/PATCH/lote)
+    // ============================================================ //
+
+    function testAutoApplyDefaultsToFalseOnCreate(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+
+        $this->assertEquals(200, $created['status']);
+        $this->assertFalse((bool) $this->findReview($created['json']['id'])->autoApply, 'Default explícito e previsível: desmarcado.');
+
+        $explicit = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotB']->id,
+            'correctorUser' => $scenario['slotOwnerB']->id,
+            'autoApply' => true,
+        ]);
+
+        $this->assertEquals(200, $explicit['status']);
+        $this->assertTrue((bool) $this->findReview($explicit['json']['id'])->autoApply, 'autoApply=true em método não-técnico é persistido.');
+        $this->assertTrue((bool) $explicit['json']['autoApply'], 'Serialização da entidade expõe o flag.');
+    }
+
+    function testAutoApplyForcedFalseForRecordType(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'correctionType' => RegistrationAppealReview::CORRECTION_TYPE_RECORD,
+            'autoApply' => true,
+        ]);
+
+        $this->assertEquals(200, $created['status']);
+        $this->assertFalse((bool) $this->findReview($created['json']['id'])->autoApply, 'D3: "somente registro" nunca autoaplica (force false, sem erro).');
+    }
+
+    function testAutoApplyForcedFalseForTechnicalMethod(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::technical);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'autoApply' => true,
+        ]);
+
+        $this->assertEquals(200, $created['status']);
+        $this->assertFalse((bool) $this->findReview($created['json']['id'])->autoApply, 'D2: método técnico excluído por construção (force false, sem erro).');
+    }
+
+    function testPatchAutoApplyOnActiveDesignation(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+
+        $enabled = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], ['autoApply' => true])
+        );
+        $this->assertEquals(200, $enabled['status'], 'PATCH do flag em designação ativa deve ser aceito: ' . json_encode($enabled['json']));
+        $this->assertTrue((bool) $this->findReview($review_id)->autoApply);
+
+        $disabled = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], ['autoApply' => false])
+        );
+        $this->assertEquals(200, $disabled['status']);
+        $this->assertFalse((bool) $this->findReview($review_id)->autoApply);
+
+        // PATCH em método técnico / tipo record também força false (D2/D3).
+        $this->login($scenario['admin']);
+        $forced = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], ['autoApply' => true, 'correctionType' => RegistrationAppealReview::CORRECTION_TYPE_RECORD])
+        );
+        $this->assertEquals(200, $forced['status']);
+        $this->assertFalse((bool) $this->findReview($review_id)->autoApply, 'Migração para "somente registro" desliga a autoaplicação.');
+    }
+
+    function testPatchAutoApplyRejectedWhenSent(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $this->markSent($review_id);
+
+        $rejected = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], ['autoApply' => true])
+        );
+
+        $this->assertEquals(400, $rejected['status'], 'Correção enviada já produziu (ou não) o efeito — flag imutável.');
+        $this->assertFalse((bool) $this->findReview($review_id)->autoApply);
+    }
+
+    function testPatchAutoApplyAfterReopenIsAllowedAgain(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_id = $created['json']['id'];
+        $this->markSent($review_id);
+        $this->assertEquals(200, $this->reopen($review_id)['status']);
+
+        $enabled = $this->dispatch(
+            $this->requestFactory->PATCH('registrationappealreview', 'single', [$review_id], ['autoApply' => true])
+        );
+
+        $this->assertEquals(200, $enabled['status'], 'Reabertura reabilita a gestão do flag.');
+        $this->assertTrue((bool) $this->findReview($review_id)->autoApply);
+    }
+
+    /**
+     * @return array{status: int, json: mixed}
+     */
+    private function bulkAutoApply(array $ids): array
+    {
+        return $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'bulkAutoApply', [], ['ids' => $ids])
+        );
+    }
+
+    function testBulkAutoApplyMarksActiveDesignations(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $review_a = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $review_b = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotB']->id,
+            'correctorUser' => $scenario['slotOwnerB']->id,
+        ]);
+        $this->assertEquals(200, $review_a['status']);
+        $this->assertEquals(200, $review_b['status']);
+
+        $response = $this->bulkAutoApply([$review_a['json']['id'], $review_b['json']['id']]);
+
+        $this->assertEquals(200, $response['status'], 'Lote do gestor com @control: ' . json_encode($response['json']));
+        $this->assertSame(2, $response['json']['counts']['marked']);
+        $this->assertSame(0, $response['json']['counts']['skipped']);
+        $this->assertTrue((bool) $this->findReview($review_a['json']['id'])->autoApply);
+        $this->assertTrue((bool) $this->findReview($review_b['json']['id'])->autoApply);
+
+        // Idempotente: re-marcar entra na contagem sem erro.
+        $again = $this->bulkAutoApply([$review_a['json']['id']]);
+        $this->assertEquals(200, $again['status']);
+        $this->assertSame(1, $again['json']['counts']['marked']);
+    }
+
+    function testBulkAutoApplySkipsSentAndNonexistent(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $official = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $sent = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotB']->id,
+            'correctorUser' => $scenario['slotOwnerB']->id,
+        ]);
+        $this->assertEquals(200, $official['status']);
+        $this->assertEquals(200, $sent['status']);
+
+        $this->markSent($sent['json']['id']);
+
+        $response = $this->bulkAutoApply([$official['json']['id'], $sent['json']['id'], 999999]);
+
+        $this->assertEquals(200, $response['status']);
+        $this->assertSame(1, $response['json']['counts']['marked'], 'Somente a designação ativa oficial é marcada.');
+        $this->assertSame(2, $response['json']['counts']['skipped']);
+
+        $reasons = [];
+        foreach ($response['json']['skipped'] as $item) {
+            $reasons[$item['id']] = (string) $item['reason'];
+        }
+        $this->assertArrayHasKey($sent['json']['id'], $reasons);
+        $this->assertStringContainsStringIgnoringCase('enviada', $reasons[$sent['json']['id']]);
+        $this->assertArrayHasKey(999999, $reasons);
+        $this->assertStringContainsStringIgnoringCase('inexistente', $reasons[999999]);
+    }
+
+    function testBulkAutoApplySkipsRecordDesignation(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $record = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+            'correctionType' => RegistrationAppealReview::CORRECTION_TYPE_RECORD,
+        ]);
+        $this->assertEquals(200, $record['status']);
+
+        $response = $this->bulkAutoApply([$record['json']['id']]);
+
+        $this->assertEquals(200, $response['status']);
+        $this->assertSame(0, $response['json']['counts']['marked'], 'Designação record nunca é marcada.');
+        $this->assertSame(1, $response['json']['counts']['skipped']);
+        $this->assertStringContainsStringIgnoringCase('registro', (string) $response['json']['skipped'][0]['reason']);
+        $this->assertFalse((bool) $this->findReview($record['json']['id'])->autoApply);
+    }
+
+    function testBulkAutoApplySkipsTechnicalMethod(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::technical);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $created['status']);
+
+        $response = $this->bulkAutoApply([$created['json']['id']]);
+
+        $this->assertEquals(200, $response['status']);
+        $this->assertSame(0, $response['json']['counts']['marked'], 'D2: técnico fica de fora do lote.');
+        $this->assertSame(1, $response['json']['counts']['skipped']);
+        $this->assertStringContainsStringIgnoringCase('técnico', (string) $response['json']['skipped'][0]['reason']);
+    }
+
+    function testBulkAutoApplyForbiddenForNonManager(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $created['status']);
+
+        $this->login($scenario['outsider']);
+
+        $response = $this->bulkAutoApply([$created['json']['id']]);
+
+        $this->assertEquals(403, $response['status'], 'Lote exige @control na fase principal.');
+        $this->assertFalse((bool) $this->findReview($created['json']['id'])->autoApply);
+    }
+
+    function testBulkAutoApplyUnauthorizedForGuest(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->logout();
+
+        $response = $this->bulkAutoApply([1]);
+
+        $this->assertEquals(401, $response['status'], 'Guest recebe 401 no lote.');
+    }
+
+    function testBulkAutoApplyRequiresIds(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+        $this->login($scenario['admin']);
+
+        $missing = $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'bulkAutoApply', [], [])
+        );
+
+        $this->assertEquals(400, $missing['status'], 'Corpo sem ids é erro de contrato.');
     }
 }

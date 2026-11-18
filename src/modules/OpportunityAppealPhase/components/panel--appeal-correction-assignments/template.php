@@ -102,6 +102,11 @@ $this->import('
                 <span class="panel--appeal-correction-assignments__badge" :class="'panel--appeal-correction-assignments__badge--' + assignment.status">
                     {{ statusLabel(assignment.status) }}
                 </span>
+
+                <!-- R06 (#134) — CA-21: aviso de que o resultado será aplicado no envio -->
+                <span v-if="assignment.autoApply" class="panel--appeal-correction-assignments__badge">
+                    <?= i::__('AUTOAPLICAÇÃO DO RESULTADO') ?>
+                </span>
             </div>
 
             <a v-if="assignment.available" :href="assignment.correctionUrl" class="button button--primary button--right-icon">

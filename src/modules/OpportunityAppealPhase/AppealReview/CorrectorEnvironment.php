@@ -66,6 +66,9 @@ class CorrectorEnvironment
             'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
             'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
             'correctionType' => $review->correctionType,
+            // R06 (#134) — CA-21: aviso ao corretor de que o resultado será
+            // aplicado no status da inscrição no envio da correção.
+            'autoApply' => (bool) $review->autoApply,
             'originalEvaluation' => (object) $original,
             'draft' => $draft !== null ? (object) $draft : null,
         ];
@@ -147,6 +150,8 @@ class CorrectorEnvironment
                 'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
                 'sentAt' => $review->sentTimestamp ? $review->sentTimestamp->format('c') : null,
                 'available' => $review->isActive() && !$not_started && !$expired,
+                // R06 (#134) — CA-21: transparência do efeito no envio.
+                'autoApply' => (bool) $review->autoApply,
                 'correctionUrl' => self::correctionUrl($review),
             ];
         }

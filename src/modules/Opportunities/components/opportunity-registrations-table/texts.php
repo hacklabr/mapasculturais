@@ -41,4 +41,12 @@ return [
     'Elegível para as cotas' => i::__('Elegível para cotas'),
     'Designar correção' => i::__('Designar correção'),
     'inscrição da fase principal não encontrada' => i::__('Não foi possível localizar a inscrição da fase principal deste recurso'),
+
+    // R06 (#134) — CA-21: autoaplicação em lote
+    'Autoaplicar resultado nas selecionadas' => i::__('Autoaplicar resultado nas selecionadas'),
+    'autoaplicação em lote: aplicando' => i::__('Aplicando autoaplicação...'),
+    'autoaplicação em lote: sem designações' => i::__('Nenhuma designação de correção ativa encontrada para as inscrições selecionadas.'),
+    'autoaplicação em lote: erro' => i::__('Não foi possível marcar a autoaplicação nas inscrições selecionadas.'),
+    'autoaplicação em lote: resultado' => i::__('Autoaplicação marcada em %s designação(ões)%s.'),
+    'autoaplicação em lote: ignoradas' => i::__(' %s ignorada(s): %s'),
 ];

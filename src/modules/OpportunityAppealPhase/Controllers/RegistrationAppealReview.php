@@ -12,6 +12,7 @@ use MapasCulturais\Entities\User;
 use MapasCulturais\i;
 use MapasCulturais\Traits;
 use OpportunityAppealPhase\AppealReview\Notifier;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
 
 /**
@@ -28,6 +29,7 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
  * - DELETE /registrationappealreview/single/{id}               → DELETE_single (cancelar designação)
  * - POST   /registrationappealreview/reopen/{id}               → POST_reopen (reabrir correção enviada)
  * - POST   /registrationappealreview/deadline/{id}             → POST_deadline (alterar prazo de designação ativa)
+ * - POST   /registrationappealreview/bulkAutoApply              → POST_bulkAutoApply (marcar autoaplicação em lote, CA-21/#134)
  *
  * Segurança: a entidade não usa owner nem permission cache, então o pseudo-owner
  * das checagens genéricas é o próprio usuário logado e as ações canônicas herdadas
@@ -143,6 +145,12 @@ class RegistrationAppealReview extends EntityController
             $this->errorJson(sprintf(i::__('Tipo de correção inválido (%s). Use "official" ou "record".'), $correction_type), 400);
         }
         $review->correctionType = $correction_type;
+
+        // R06 (#134) — CA-21: autoaplicação do resultado (default false).
+        $review->autoApply = $this->normalizeAutoApply(
+            $review,
+            filter_var($data['autoApply'] ?? false, FILTER_VALIDATE_BOOL)
+        );
 
         $review->releasedScope = $this->parseReleasedScope($data['releasedScope'] ?? null);
         $review->startsAt = $this->parseDateParam($data['startsAt'] ?? null);
@@ -348,6 +356,101 @@ class RegistrationAppealReview extends EntityController
         $this->json($review);
     }
 
+    /**
+     * Marca autoaplicação do resultado em LOTE nas designações informadas
+     * (R06/#134 — CA-21): POST /registrationappealreview/bulkAutoApply com
+     * {ids: [<id de designação>, ...]}.
+     *
+     * O lote só MARCA (PRD: "não desmarcar"): fixa autoApply=true em
+     * designações ativas (não SENT), oficiais e de método não-técnico — os
+     * demais ids voltam no relatório como skipped com motivo, na mesma
+     * resposta (sem estado parcial orquestrado no cliente).
+     *
+     * Segurança: requireAuthentication + feature flag + `@control` na fase
+     * principal de cada designação (mesma âncora da listagem por oportunidade,
+     * CA-20/#133 — uma designação de fase que o gestor não controla bloqueia
+     * o lote inteiro com 403, sem ampliar acesso).
+     */
+    function POST_bulkAutoApply($data = null)
+    {
+        $this->requireAuthentication();
+        $this->assertFeatureEnabled();
+
+        $app = App::i();
+
+        if (is_null($data)) {
+            $data = $this->postData;
+        }
+
+        $ids = $this->extractBulkIds($data);
+
+        if (!$ids) {
+            $this->errorJson(i::__('Informe ao menos um ID de designação no corpo da requisição ({"ids": [...]}).'), 400);
+        }
+
+        $updated = [];
+        $skipped = [];
+
+        $app->em->beginTransaction();
+
+        try {
+            foreach ($ids as $id) {
+                /** @var ReviewEntity|null $review */
+                $review = $app->repo(ReviewEntity::class)->find($id);
+
+                if (!$review) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('designação inexistente')];
+                    continue;
+                }
+
+                // Âncora de permissão: fase principal da inscrição da designação.
+                // checkPermission lança PermissionDenied (403 global) sem
+                // ampliar acesso — deliberado para lote multi-oportunidade.
+                $review->registration->opportunity->checkPermission('@control');
+
+                if (!$review->isActive()) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('correção já enviada — use a reabertura para gestionar a autoaplicação')];
+                    continue;
+                }
+
+                if ($review->correctionType === ReviewEntity::CORRECTION_TYPE_RECORD) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('tipo de correção "somente registro" nunca autoaplica')];
+                    continue;
+                }
+
+                if (ResultFormatter::methodForOpportunity($review->registration->opportunity) === 'technical') {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('método técnico mantém a classificação como aplicação manual do gestor')];
+                    continue;
+                }
+
+                if ($review->autoApply) {
+                    // Idempotente: já marcada entra na contagem sem novo save
+                    // (evita revisão vazia da designação).
+                    $updated[] = $id;
+                    continue;
+                }
+
+                $review->autoApply = true;
+                $review->save(true);
+                $updated[] = $id;
+            }
+
+            $app->em->commit();
+        } catch (\Throwable $e) {
+            $app->em->rollback();
+            throw $e;
+        }
+
+        $this->json([
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'counts' => [
+                'marked' => count($updated),
+                'skipped' => count($skipped),
+            ],
+        ]);
+    }
+
     // ============================================================ //
     // Helpers
     // ============================================================ //
@@ -412,6 +515,71 @@ class RegistrationAppealReview extends EntityController
     }
 
     /**
+     * Normaliza o flag de autoaplicação (R06/#134 — CA-21) pelas regras de
+     * contorno do design:
+     * - D3: correction_type=record NUNCA autoaplica (força false);
+     * - D2: método técnico da fase principal excluído por construção (força
+     *   false — o modal não oferece o checkbox e o core é no-op; gravar o
+     *   flag criaria uma designação que "parece aplicar" e não aplica).
+     *
+     * @param string|null $correction_type Tipo efetivo (payload) quando difere
+     *   do vigente na entidade — o guard roda antes do core aplicar campos.
+     */
+    private function normalizeAutoApply(ReviewEntity $review, bool $requested, ?string $correction_type = null): bool
+    {
+        if (!$requested) {
+            return false;
+        }
+
+        $correction_type ??= $review->correctionType;
+
+        if ($correction_type === ReviewEntity::CORRECTION_TYPE_RECORD) {
+            return false;
+        }
+
+        if (ResultFormatter::methodForOpportunity($review->registration->opportunity) === 'technical') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * IDs de designação do corpo do lote (POST_bulkAutoApply): aceita
+     * {ids: [...]}, array cru de ids/objetos com {id} ou string separada por
+     * vírgula. Sempre únicos e > 0.
+     *
+     * @return int[]
+     */
+    private function extractBulkIds(mixed $data): array
+    {
+        $raw = $data['ids'] ?? $data ?? null;
+
+        if (is_string($raw)) {
+            $raw = array_map('trim', explode(',', $raw));
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        // Corpo {ids: {}} ou lista associativa: sem ids utilizáveis.
+        if ($raw !== [] && !array_is_list($raw)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($raw as $value) {
+            $id = $this->resolveIdParam($value);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
      * Valida os campos mutáveis via PUT/PATCH antes de delegar ao core:
      * - campos derivados do slot são imutáveis;
      * - substituição de corretor exige elegibilidade (CA-3) e é atribuída
@@ -462,6 +630,39 @@ class RegistrationAppealReview extends EntityController
             if (!in_array((string) $data['correctionType'], ReviewEntity::getCorrectionTypes(), true)) {
                 $this->errorJson(sprintf(i::__('Tipo de correção inválido (%s). Use "official" ou "record".'), (string) $data['correctionType']), 400);
             }
+
+            // D3: migração para "somente registro" desliga a autoaplicação —
+            // designação record nunca autoaplica, ainda que o flag vigente
+            // tenha sido gravado antes da troca de tipo.
+            if ((string) $data['correctionType'] === ReviewEntity::CORRECTION_TYPE_RECORD && $review->autoApply) {
+                $review->autoApply = false;
+            }
+        }
+
+        /*
+         * R06 (#134) — CA-21: autoaplicação mutável somente em designação NÃO
+         * enviada — correção enviada já produziu (ou não) o efeito; mudar o
+         * flag depois do envio é enganoso. STATUS_REOPENED (POST_reopen)
+         * reabilita a gestão, coerente com o ciclo designado/rascunho/reaberto.
+         */
+        if (array_key_exists('autoApply', $data)) {
+            if ((int) $review->status === ReviewEntity::STATUS_SENT) {
+                $this->errorJson(i::__('A autoaplicação não pode ser alterada em correção já enviada. Reabra a correção para gestionar o flag.'), 400);
+            }
+
+            // O tipo efetivo é o do payload (o core só aplica correctionType
+            // depois do guard): PATCH combinado {autoApply, correctionType}
+            // precisa validar o flag contra o tipo RESULTANTE.
+            $effective_type = isset($data['correctionType'])
+                ? (string) $data['correctionType']
+                : $review->correctionType;
+
+            $review->autoApply = $this->normalizeAutoApply(
+                $review,
+                filter_var($data['autoApply'], FILTER_VALIDATE_BOOL),
+                $effective_type
+            );
+            unset($data['autoApply']);
         }
 
         // F6: array_key_exists (não isset) para que releasedScope null LIMPE

@@ -1,6 +1,6 @@
 app.component('entity-table', {
     template: $TEMPLATES['entity-table'],
-    emits: ['clear-filters', 'remove-filter'],
+    emits: ['clear-filters', 'remove-filter', 'update:selectedIds'],
 
     setup(props, { slots }) {
         const hasSlot = name => !!slots[name]
@@ -80,6 +80,13 @@ app.component('entity-table', {
             type: [Entity, Object],
             default: null,
         },
+        /**
+         * R06 (#134) — CA-21: habilita a coluna de seleção de linhas
+         * (checkbox por linha + selecionar todos da página). A seleção é
+         * emitida ao consumidor via update:selectedIds — opt-in, sem efeito
+         * para as tabelas existentes.
+         */
+        selectable: Boolean,
     },
 
     created() {
@@ -182,6 +189,7 @@ app.component('entity-table', {
             globalColumnsConfigs: $MAPAS.config.entityTable.columnsConfig?.tables || {},
             _columnDragLastY: null,
             _columnDragRaf: null,
+            selectedIds: [],
         }
     },
 
@@ -417,6 +425,47 @@ app.component('entity-table', {
     },
 
     methods: {
+        // ============================================================ //
+        // R06 (#134) — CA-21: seleção de linhas (opt-in via prop selectable).
+        // Espelha os padrões de "selecionar todos" da casa
+        // (opportunity-support-config, fields-visible-evaluators):
+        // estado em array + emissão update:selectedIds ao consumidor.
+        // ============================================================ //
+
+        isSelected(entity) {
+            return this.selectedIds.includes(entity.id);
+        },
+
+        toggleSelected(entity) {
+            const index = this.selectedIds.indexOf(entity.id);
+
+            if (index === -1) {
+                this.selectedIds = [...this.selectedIds, entity.id];
+            } else {
+                this.selectedIds = this.selectedIds.filter(id => id !== entity.id);
+            }
+
+            this.$emit('update:selectedIds', [...this.selectedIds]);
+        },
+
+        allRowsSelected(entities) {
+            return (entities || []).length > 0
+                && entities.every(entity => this.selectedIds.includes(entity.id));
+        },
+
+        toggleAllSelected(entities) {
+            const page_ids = (entities || []).map(entity => entity.id);
+
+            if (this.allRowsSelected(entities)) {
+                const page_set = new Set(page_ids);
+                this.selectedIds = this.selectedIds.filter(id => !page_set.has(id));
+            } else {
+                this.selectedIds = [...new Set([...this.selectedIds, ...page_ids])];
+            }
+
+            this.$emit('update:selectedIds', [...this.selectedIds]);
+        },
+
         normalizeHeaders(headers) {
             const seen = new Set();
             return headers.filter(obj => {

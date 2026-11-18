@@ -171,6 +171,12 @@ $this->import('
                             <span class="opportunity-appeal-correction-evaluation__badge">{{ correctionTypeLabel }}</span>
                         </dd>
                     </div>
+                    <div v-if="environment.autoApply" class="opportunity-appeal-correction-evaluation__info opportunity-appeal-correction-evaluation__info--wide">
+                        <dt><?= i::__('Autoaplicação do resultado') ?></dt>
+                        <dd>
+                            <span class="opportunity-appeal-correction-evaluation__badge">{{ text('auto-apply-active') }}</span>
+                        </dd>
+                    </div>
                 </dl>
             </template>
         </mc-card>
