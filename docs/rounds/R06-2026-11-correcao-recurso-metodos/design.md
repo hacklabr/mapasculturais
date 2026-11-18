@@ -169,6 +169,8 @@ Mudança: mapa único de rótulos por método (chaves `original`/`corrected`/`di
 
 Jobs de planilha por slot dos métodos — `EvaluationMethodSimple/JobTypes/Spreadsheet.php`, `EvaluationMethodDocumentary/JobTypes/Spreadsheet.php`, `EvaluationMethodQualification/JobTypes/Spreadsheet.php` — ganham as colunas original/corrigida (formatadas pelo §4.1) quando o método possui exportação por slot (CA-18: "inclusive nas exportações por slot quando o método as possuir").
 
+> **As-built (pós-#131):** rótulos centralizados no `AppealReview/ResultFormatter::headerLabels` (fonte única consumida via config/jsObject pelos init.php dos componentes e diretamente pelo JobType — sem duplicação em texts.php); vocabulário da habilitação é o do próprio método (**Habilitado/Inabilitado**, `getEvaluationStatues`); método resolvido da **fase principal** por `ResultFormatter::methodForOpportunity` (não via `isTechnicalEvaluationPhase` do EMC local). Detalhes em `deviations.md` (#131).
+
 ---
 
 ## 5. Timeline por método (#132, CA-19) — verify-first
