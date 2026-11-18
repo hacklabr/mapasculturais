@@ -195,6 +195,8 @@ A divergência **vigente × aplicado** no simples **não** é corrigida na timel
 3. **`requireAuthentication()` na 1ª linha de `createAppealPhaseRegistration`** — `OpportunityAppealPhase/Module.php:263-353` entra direto no `try` (:266); guest hoje dependeria do `PermissionDenied` do `save()` (catch :350-352, 403). Padrão da casa: toda action autenticada chama `requireAuthentication()` na primeira linha (AGENTS.md regra 5; `Controller.php:455-463`) → 401 explícito.
 4. **Mensagem de elegibilidade agnóstica de método** — `Controllers/RegistrationAppealReview.php:390` diz "exige fase principal com método técnico" (STALE: elegibilidade é agnóstica desde F7/#49; a condição real é `eligibleCorrectors` vazio — sem EMC/fase de recurso ativa/Comissão de Recursos, sobra só o dono do slot, `Entities/RegistrationAppealReview.php:240-278`). Reparo: mensagem sem citar método, mencionando Comissão de Recursos (observação registrada na triagem: sem comitê cadastrada, só o dono do slot é elegível — não é bug).
 
+> **As-built (pós-#133):** três desvios declarados — (1) a âncora de permissão da listagem por oportunidade é sempre a fase principal (`parent`) quando o ID informado é da fase de recurso, não a oportunidade consultada (estritamente mais restritivo); (2) `registration` + `opportunity` combinados na mesma chamada → 400 (determinístico e restritivo); (3) o escopo das fases de recurso é resolvido em PHP pela metadata `appealPhase` (mesmo mapeamento do SQL cru, um caminho de query a menos). Detalhes em `deviations.md` (#133).
+
 ---
 
 ## 7. Testes
