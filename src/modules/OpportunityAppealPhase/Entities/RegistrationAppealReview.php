@@ -270,6 +270,8 @@ class RegistrationAppealReview extends Entity
 
         $push_user($slot->user);
 
+        // Intencional (CA-20/#133): sem Comissão de Recursos cadastrada na fase
+        // de recurso, apenas o dono do slot é corretor elegível — não é bug.
         foreach ($this->appealPhase->evaluationMethodConfiguration->getCommittee(false) as $agent) {
             $push_user($agent->user);
         }

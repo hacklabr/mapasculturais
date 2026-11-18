@@ -403,6 +403,25 @@ class AppealAssignmentApiTest extends TestCase
         $this->assertEquals(401, $find['status'], 'Guest recebe 401 na listagem.');
     }
 
+    /**
+     * CA-20 (#133): requireAuthentication na primeira linha do hook de
+     * criação de inscrição na fase de recurso — guest recebe 401 explícito
+     * (antes dependia do PermissionDenied do save(), que viria como 403).
+     */
+    function testCreateAppealPhaseRegistrationUnauthorizedForGuest(): void
+    {
+        $scenario = $this->createScenario();
+        $this->logout();
+
+        $response = $this->dispatch(
+            $this->requestFactory->POST('opportunity', 'createAppealPhaseRegistration', [$scenario['opportunity']->id], [
+                'registration_id' => $scenario['registration']->id,
+            ])
+        );
+
+        $this->assertEquals(401, $response['status'], 'Guest recebe 401 na criação de inscrição na fase de recurso.');
+    }
+
     function testFlagOffReturns404(): void
     {
         $scenario = $this->createScenario();
@@ -510,6 +529,172 @@ class AppealAssignmentApiTest extends TestCase
         $response = $this->findAssignments($scenario['registration']);
 
         $this->assertEquals(403, $response['status'], 'Listagem por inscrição exige @control na oportunidade.');
+    }
+
+    /**
+     * CA-20 (#133): listagem por oportunidade — uma chamada para o gestor, no
+     * lugar de N chamadas (uma por inscrição).
+     *
+     * @return array{status: int, json: mixed}
+     */
+    private function findAssignmentsByOpportunity(
+        Opportunity $opportunity,
+        string $select = 'id,status,startsAt,endsAt,sentTimestamp,registration.number,correctorUser.id',
+    ): array
+    {
+        return $this->dispatch(
+            $this->requestFactory->GET(
+                'api/registrationappealreview',
+                'find',
+                [],
+                [
+                    'opportunity' => 'EQ(' . $opportunity->id . ')',
+                    '@select' => $select,
+                ],
+                ajax: true
+            )
+        );
+    }
+
+    function testManagerListsAssignmentsByOpportunity(): void
+    {
+        $scenario_a = $this->createScenario();
+        $scenario_b = $this->createScenario();
+
+        $this->login($scenario_a['admin']);
+
+        $review_a1 = $this->postAssignment([
+            'originalEvaluation' => $scenario_a['slotA']->id,
+            'correctorUser' => $scenario_a['committeeUser']->id,
+            'startsAt' => (new DateTime('+1 day'))->format('Y-m-d') . ' 09:00',
+            'endsAt' => (new DateTime('+10 days'))->format('Y-m-d') . ' 18:00',
+        ]);
+        $this->assertEquals(200, $review_a1['status'], json_encode($review_a1['json']));
+
+        $review_a2 = $this->postAssignment([
+            'originalEvaluation' => $scenario_a['slotB']->id,
+            'correctorUser' => $scenario_a['slotOwnerB']->id,
+        ]);
+        $this->assertEquals(200, $review_a2['status']);
+
+        // Designação de OUTRA inscrição da MESMA oportunidade: mesma fase de
+        // recurso, deve entrar no escopo.
+        $other_registration = $this->registrationDirector->createSentRegistration($scenario_a['opportunity'], data: []);
+        $app = App::i();
+        $app->disableAccessControl();
+        $slot_c = new RegistrationEvaluation();
+        $slot_c->registration = $other_registration;
+        $slot_c->user = $scenario_a['slotOwnerA'];
+        $slot_c->status = RegistrationEvaluation::STATUS_EVALUATED;
+        $slot_c->save(true);
+        $app->enableAccessControl();
+
+        $review_a3 = $this->postAssignment([
+            'originalEvaluation' => $slot_c->id,
+            'correctorUser' => $scenario_a['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $review_a3['status']);
+
+        // Designação em outra oportunidade (fase de recurso distinta): fora do escopo.
+        $this->login($scenario_b['admin']);
+        $review_b1 = $this->postAssignment([
+            'originalEvaluation' => $scenario_b['slotA']->id,
+            'correctorUser' => $scenario_b['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $review_b1['status']);
+
+        $this->login($scenario_a['admin']);
+
+        $response = $this->findAssignmentsByOpportunity($scenario_a['opportunity']);
+
+        $this->assertEquals(200, $response['status'], 'Listagem por oportunidade deve funcionar para gestor com @control: ' . json_encode($response['json']));
+        $items = $response['json'];
+        $this->assertIsArray($items);
+        $this->assertCount(3, $items, 'Escopo = designações da oportunidade informada (todas as inscrições), sem vazar de outra oportunidade.');
+
+        $ids = array_map(static fn (array $item) => $item['id'], $items);
+        $this->assertContains($review_a1['json']['id'], $ids);
+        $this->assertContains($review_a2['json']['id'], $ids);
+        $this->assertContains($review_a3['json']['id'], $ids);
+        $this->assertNotContains($review_b1['json']['id'], $ids, 'Designação de outra oportunidade não pode vazar na listagem.');
+
+        // Campos que o painel do gestor precisa por designação (CA-20):
+        // número da inscrição, corretor, status e prazos — mesma serialização
+        // já usada no caminho por inscrição.
+        $by_id = [];
+        foreach ($items as $item) {
+            $by_id[$item['id']] = $item;
+        }
+
+        $panel_item = $by_id[$review_a1['json']['id']];
+        $this->assertEquals(RegistrationAppealReview::STATUS_DESIGNATED, $panel_item['status']);
+        $this->assertSame($scenario_a['registration']->number, $panel_item['registration']['number'] ?? null, 'Painel por oportunidade exige o número da inscrição.');
+        $this->assertEquals($scenario_a['committeeUser']->id, (int) ($panel_item['correctorUser'] ?? 0), 'Painel por oportunidade exige o corretor designado.');
+        $this->assertArrayHasKey('startsAt', $panel_item, 'Painel exige prazo inicial.');
+        $this->assertArrayHasKey('endsAt', $panel_item, 'Painel exige prazo final.');
+
+        // O parâmetro também aceita o ID da fase de recurso: mesmo resultado
+        // (âncora de permissão continua sendo a fase principal).
+        $by_appeal_phase = $this->findAssignmentsByOpportunity($scenario_a['appealPhase']);
+        $this->assertEquals(200, $by_appeal_phase['status']);
+        $this->assertCount(3, $by_appeal_phase['json'], 'Parametro opportunity aceita o ID da fase de recurso.');
+        $this->assertEqualsCanonicalizing(
+            $ids,
+            array_map(static fn (array $item) => $item['id'], $by_appeal_phase['json']),
+            'Fase principal e fase de recurso da mesma oportunidade listam as mesmas designações.'
+        );
+    }
+
+    function testFindAssignmentsByOpportunityForbiddenForNonManager(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $created = $this->postAssignment([
+            'originalEvaluation' => $scenario['slotA']->id,
+            'correctorUser' => $scenario['committeeUser']->id,
+        ]);
+        $this->assertEquals(200, $created['status']);
+
+        $this->login($scenario['outsider']);
+
+        $by_main_phase = $this->findAssignmentsByOpportunity($scenario['opportunity']);
+        $this->assertEquals(403, $by_main_phase['status'], 'Listagem por oportunidade exige @control na fase principal.');
+
+        $by_appeal_phase = $this->findAssignmentsByOpportunity($scenario['appealPhase']);
+        $this->assertEquals(403, $by_appeal_phase['status'], 'Listagem pela fase de recurso usa a mesma âncora (@control na fase principal).');
+    }
+
+    function testFindAssignmentsByOpportunityUnauthorizedForGuest(): void
+    {
+        $scenario = $this->createScenario();
+        $this->logout();
+
+        $response = $this->findAssignmentsByOpportunity($scenario['opportunity']);
+
+        $this->assertEquals(401, $response['status'], 'Guest recebe 401 na listagem por oportunidade.');
+    }
+
+    function testFindRejectsRegistrationAndOpportunityTogether(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['admin']);
+
+        $response = $this->dispatch(
+            $this->requestFactory->GET(
+                'api/registrationappealreview',
+                'find',
+                [],
+                [
+                    'registration' => 'EQ(' . $scenario['registration']->id . ')',
+                    'opportunity' => 'EQ(' . $scenario['opportunity']->id . ')',
+                    '@select' => 'id',
+                ],
+                ajax: true
+            )
+        );
+
+        $this->assertEquals(400, $response['status'], 'registration e opportunity são mutuamente exclusivos: escopo ambíguo é rejeitado.');
     }
 
     function testPatchSubstitutionEnforcesEligibility(): void

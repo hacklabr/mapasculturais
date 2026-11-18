@@ -13,8 +13,9 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview;
  * Ambiente do corretor designado (issue #19 / F3).
  *
  * GET /appealCorrector/environment/{assignmentId}  -> read-only JSON payload
- * GET /appealCorrector/correction/{assignmentId}   -> correction page (dumb page:
- *    permission/deadline/feature flag checks belong to the environment endpoint)
+ * GET /appealCorrector/correction/{assignmentId}   -> correction page (CA-20/#133:
+ *    mesma guarda do environment — feature flag, corretor designado, designação
+ *    ativa e dentro do prazo — aplicada antes do render)
  * GET /appealCorrector/assignments                  -> active assignments of the logged user
  */
 class AppealCorrector extends Controller
@@ -68,6 +69,10 @@ class AppealCorrector extends Controller
 
         $app = App::i();
 
+        if (!(bool) env('APPEAL_SCORE_CORRECTION', false)) {
+            $this->errorJson(i::__('Correção de notas por recurso desabilitada'), 404);
+        }
+
         $assignment_id = (int) ($this->data['id'] ?? $this->urlData['id'] ?? 0);
         if (!$assignment_id) {
             $app->pass();
@@ -77,6 +82,16 @@ class AppealCorrector extends Controller
         $review = $app->repo(RegistrationAppealReview::class)->find($assignment_id);
         if (!$review) {
             $app->pass();
+        }
+
+        // CA-20 (#133): mesma guarda do endpoint do ambiente (corretor
+        // designado, designação ativa, janela de prazo) antes do render —
+        // usuário errado recebe o mesmo 403; guest já caiu no 401 do
+        // requireAuthentication acima.
+        try {
+            (new CorrectorEnvironment())->assertAssignmentAccessible($review);
+        } catch (PermissionDenied $e) {
+            $this->errorJson(i::__('Sem permissão para acessar o ambiente de correção'), 403);
         }
 
         $this->render('correction', [

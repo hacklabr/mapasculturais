@@ -5,6 +5,7 @@ namespace OpportunityAppealPhase\Controllers;
 use DateTime;
 use MapasCulturais\App;
 use MapasCulturais\Controllers\EntityController;
+use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
@@ -20,6 +21,7 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
  * Contrato consumido pelo modal e pelo painel de acompanhamento do F2 (#18):
  * - POST   /registrationappealreview                           → POST_index (designação pelo gestor)
  * - GET    /api/registrationappealreview/find?registration=…   → API_find (listagem por inscrição, CA-13)
+ * - GET    /api/registrationappealreview/find?opportunity=…    → API_find (listagem por oportunidade/fase, CA-20/#133)
  * - GET    /api/registrationappealreview/findOne?id=…          → API_findOne
  * - PUT    /registrationappealreview/single/{id}               → PUT_single (substituir corretor/prazo)
  * - PATCH  /registrationappealreview/single/{id}               → PATCH_single
@@ -154,18 +156,29 @@ class RegistrationAppealReview extends EntityController
     /**
      * Listagem para o painel de acompanhamento do F2 (CA-13).
      *
-     * Exige `registration` no query string e `@control` na oportunidade
-     * principal da inscrição; o resultado é sempre escopado à inscrição
-     * autorizada, independentemente dos filtros enviados.
+     * Caminho por inscrição (contrato original): exige `registration` no
+     * query string e `@control` na oportunidade principal da inscrição; o
+     * resultado é sempre escopado à inscrição autorizada, independentemente
+     * dos filtros enviados.
+     *
+     * CA-20 (#133): caminho alternativo por `opportunity` (fase principal ou
+     * fase de recurso) — o gestor lista as designações da oportunidade em uma
+     * chamada, em vez de uma por inscrição. Mesma âncora de permissão
+     * (`@control` na fase principal) e escopo forçado às designações das
+     * fases de recurso da oportunidade: sem ampliação de acesso.
      */
     function API_find()
     {
         $this->requireAuthentication();
         $this->assertFeatureEnabled();
 
-        $registration = $this->getAuthorizedRegistrationFromQuery();
+        if ($this->queryParamIsPresent('opportunity')) {
+            $this->applyOpportunityScopeFromQuery();
+        } else {
+            $registration = $this->getAuthorizedRegistrationFromQuery();
+            $this->getData['registration'] = 'EQ(' . $registration->id . ')';
+        }
 
-        $this->getData['registration'] = 'EQ(' . $registration->id . ')';
         $this->applyStatusDomainDefaults();
 
         $data = $this->apiQuery($this->getData);
@@ -387,7 +400,10 @@ class RegistrationAppealReview extends EntityController
         );
 
         if (!$eligible_ids) {
-            $this->errorJson(i::__('Esta avaliação não admite designação de correção: exige fase principal com método técnico e fase de recurso ativa com Comissão de Recursos.'), 400);
+            // CA-20 (#133): elegibilidade é agnóstica de método (desde F7/#49);
+            // a condição real é estrutural — sem EMC na fase principal ou sem
+            // fase de recurso ativa com avaliação configurada (entities/RegistrationAppealReview::eligibleCorrectors).
+            $this->errorJson(i::__('Esta avaliação não admite designação de correção: exige fase principal com avaliação configurada e fase de recurso ativa. A Comissão de Recursos amplia os corretores elegíveis; sem comitê cadastrado, apenas o dono da avaliação original pode ser designado.'), 400);
         }
 
         if (!in_array((int) $corrector->id, $eligible_ids, true)) {
@@ -514,6 +530,110 @@ class RegistrationAppealReview extends EntityController
         $registration->opportunity->checkPermission('@control');
 
         return $registration;
+    }
+
+    /**
+     * CA-20 (#133): escopo por oportunidade na listagem de designações.
+     *
+     * Aceita o ID da fase principal (ou da oportunidade raiz, cobrindo suas
+     * fases) ou o ID da fase de recurso. A âncora de permissão é sempre a
+     * FASE PRINCIPAL — o mesmo `@control` do caminho por inscrição, sem
+     * ampliação (quem só controla a fase de recurso não ganha listagem).
+     * O resultado é forçado às designações das fases de recurso em escopo
+     * (filtro `appealPhase` por cima de qualquer filtro enviado), seguindo o
+     * mapeamento recurso → fase principal do módulo (metadado `appealPhase`).
+     */
+    private function applyOpportunityScopeFromQuery(): void
+    {
+        $app = App::i();
+
+        if ($this->queryParamIsPresent('registration')) {
+            $this->errorJson(i::__('Informe apenas um dos parâmetros: registration (listagem por inscrição) ou opportunity (listagem por oportunidade).'), 400);
+        }
+
+        $raw_value = trim((string) ($this->getData['opportunity'] ?? ''));
+
+        if (!preg_match('/\d+/', $raw_value, $matches)) {
+            $this->errorJson(i::__('O parâmetro opportunity (ID da oportunidade) é inválido.'), 400);
+        }
+
+        /** @var Opportunity|null $opportunity */
+        $opportunity = $app->repo('Opportunity')->find((int) $matches[0]);
+
+        if (!$opportunity) {
+            $this->errorJson(sprintf(i::__('Não existe oportunidade com o ID %s.'), $matches[0]), 404);
+        }
+
+        $appeal_phases = [];
+
+        if ($opportunity->isAppealPhase || $opportunity->status === Opportunity::STATUS_APPEAL_PHASE) {
+            // Fase de recurso informada: âncora e escopo pela fase principal (parent).
+            $main_phase = $opportunity->parent;
+            $appeal_phases = [$opportunity];
+        } else {
+            // Fase principal (ou raiz): fases de recurso da própria e de suas fases.
+            $main_phase = $opportunity;
+
+            foreach ($this->phasesInOpportunityScope($opportunity) as $phase) {
+                $appeal = $phase->appealPhase;
+                if ($appeal instanceof Opportunity) {
+                    $appeal_phases[] = $appeal;
+                }
+            }
+        }
+
+        if (!$main_phase) {
+            $this->errorJson(i::__('A fase de recurso informada não está vinculada a uma fase principal.'), 404);
+        }
+
+        $main_phase->checkPermission('@control');
+
+        $appeal_ids = [];
+        foreach ($appeal_phases as $appeal) {
+            $appeal_ids[(int) $appeal->id] = true;
+        }
+
+        // IN(-1) nunca casa (sequências começam em 1): oportunidade sem fase
+        // de recurso não tem designações a listar — lista vazia, não erro.
+        $this->getData['appealPhase'] = $appeal_ids
+            ? 'IN(' . implode(',', array_keys($appeal_ids)) . ')'
+            : 'IN(-1)';
+        unset($this->getData['opportunity'], $this->getData['registration']);
+    }
+
+    /**
+     * A oportunidade informada e suas fases (filhas diretas marcadas como
+     * opportunity phase). Sem filtro de status — mais simples e completo que
+     * OpportunityPhases::getPhases (que restringe por status e refaz a
+     * checagem de @control): o acesso aqui já está ancorado no checkPermission
+     * da fase principal, e a ausência de filtro só afeta a completude da
+     * listagem do gestor, nunca quem pode vê-la.
+     *
+     * @return Opportunity[]
+     */
+    private function phasesInOpportunityScope(Opportunity $opportunity): array
+    {
+        $app = App::i();
+
+        $phases = [$opportunity];
+
+        $children = $app->repo('Opportunity')->findBy(['parent' => $opportunity], ['id' => 'ASC']);
+
+        foreach ($children as $child) {
+            if ($child instanceof Opportunity && $child->isOpportunityPhase) {
+                $phases[] = $child;
+            }
+        }
+
+        return $phases;
+    }
+
+    /**
+     * Parâmetro de query presente e não-vazio (trim), no $this->getData da action.
+     */
+    private function queryParamIsPresent(string $key): bool
+    {
+        return trim((string) ($this->getData[$key] ?? '')) !== '';
     }
 
     /**

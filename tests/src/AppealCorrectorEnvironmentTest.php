@@ -535,6 +535,53 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertStringContainsString('opportunity-appeal-correction-evaluation__registration', $body);
     }
 
+    /**
+     * CA-20 (#133): guard da página de correção — anônimo recebe 401
+     * (requisção AJAX; a navegação direta redireciona ao login, 302).
+     */
+    function testCorrectionPageUnauthorizedForAnonymous(): void
+    {
+        $scenario = $this->createScenario();
+        $this->logout();
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'correction',
+            [$scenario['review']->id],
+            ajax: true
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(401, $app->response->getStatusCode(), 'Guest recebe 401 na página de correção.');
+    }
+
+    /**
+     * CA-20 (#133): guard da página de correção — usuário sem designação
+     * recebe o mesmo 403 do endpoint do ambiente.
+     */
+    function testCorrectionPageForbiddenForWrongUser(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['outsider']);
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'correction',
+            [$scenario['review']->id],
+            ajax: false
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(403, $app->response->getStatusCode(), 'Usuário que não é o corretor designado recebe 403 antes do render.');
+        $this->assertStringNotContainsString('opportunity-appeal-correction-evaluation', (string) $app->response->getBody(), 'Página não pode ser renderizada para usuário errado.');
+    }
+
     function testDesignatedCorrectorCanViewRegistrationForm(): void
     {
         $scenario = $this->createScenario();

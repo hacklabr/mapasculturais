@@ -264,6 +264,10 @@ class Module extends \MapasCulturais\Module {
         $app->hook('POST(opportunity.createAppealPhaseRegistration)', function() use ($app, $self) {
             /** @var Controllers\Opportunity $this  */
 
+            // Regra 5 (AGENTS.md): action autenticada — guest recebe 401
+            // explícito; o canUser('create') do save() segue como camada 403.
+            $this->requireAuthentication();
+
             try {
                 $opportunity = $this->requestedEntity;
                 $appeal_phase = $opportunity->appealPhase;

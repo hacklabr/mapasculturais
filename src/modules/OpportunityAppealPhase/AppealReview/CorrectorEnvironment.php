@@ -159,6 +159,18 @@ class CorrectorEnvironment
         return App::i()->createUrl('appealCorrector', 'correction', [$review->id]);
     }
 
+    /**
+     * Guard da página de correção (CA-20 / #133): as mesmas regras do
+     * endpoint do ambiente — feature flag, corretor designado, designação
+     * ativa e dentro da janela de prazo — expostas para o controller
+     * aplicar antes do render (PermissionDenied → 403).
+     */
+    public function assertAssignmentAccessible(RegistrationAppealReview $review): void
+    {
+        $this->assertFeatureEnabled();
+        $this->assertCanAccess($review, App::i()->user);
+    }
+
     private function assertCanAccess(RegistrationAppealReview $review, $user): void
     {
         if ($user->is('guest')) {
