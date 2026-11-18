@@ -59,6 +59,13 @@ $this->import('
                     <?= i::__('Inválido') ?>
                 </strong>
             </div>
+            <!--
+                R06 (#132)/CA-19: sem snapshot, o método simples exibe o
+                status APLICADO (doutrina R03/#78: o aplicado é o status —
+                espelha o ramo simple do snapshot acima e o do resultado
+                final).
+            -->
+            <div v-if="phaseType == 'simple'"><?= i::__('Status:') ?> <strong :class="simpleStatusColor(registration.status)"><mc-icon name="circle" :class="simpleStatusColor(registration.status)"></mc-icon> {{ simpleStatusLabel(registration.status) }}</strong></div>
         </template>
 
         <div class="opportunity-phases-timeline__buttons">
