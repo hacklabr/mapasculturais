@@ -78,7 +78,7 @@ $this->import('
                     </label>
 
                     <div class="opportunity-appeal-correction-assignment__slot-result">
-                        {{ slot.resultString }}
+                        {{ slotResult(slot) }}
                     </div>
 
                     <span

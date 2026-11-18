@@ -264,7 +264,10 @@ app.component('opportunity-appeal-correction-assignment', {
         async fetchSlots() {
             const api = new API('registrationevaluation');
             const evaluations = await api.fetch('find', {
-                '@select': 'id,user,status,result,resultString,registration.{id,number}',
+                // R06 (#131) — CA-18: originalScore/correctedScore enriquecidos
+                // pelo módulo OpportunityAppealPhase (rótulos do método fora
+                // do técnico) para exibir "original → corrigida" por slot.
+                '@select': 'id,user,status,result,resultString,originalScore,correctedScore,registration.{id,number}',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { raw: true, rawProcessor: data => data });
@@ -276,6 +279,8 @@ app.component('opportunity-appeal-correction-assignment', {
                 status: evaluation.status,
                 result: evaluation.result,
                 resultString: evaluation.resultString,
+                originalScore: evaluation.originalScore ?? null,
+                correctedScore: evaluation.correctedScore ?? null,
                 registration: evaluation.registration,
                 checked: false,
                 correctorUserId: null,
@@ -1085,6 +1090,23 @@ app.component('opportunity-appeal-correction-assignment', {
                 || slot?.agent?.email
                 || slot?.user?.profile?.email
                 || this.text('slot owner tag');
+        },
+
+        /**
+         * R06 (#131) — CA-18: resultado do slot no vocabulário do método.
+         * Com correção aplicada (original ≠ corrigida), exibe o par
+         * "original → corrigida" (número no técnico; rótulo do método —
+         * Selecionada, Válida, Habilitado... — nos demais).
+         */
+        slotResult(slot) {
+            const original = slot?.originalScore ?? null;
+            const corrected = slot?.correctedScore ?? null;
+
+            if (original !== null && corrected !== null && String(original) !== String(corrected)) {
+                return `${original} → ${corrected}`;
+            }
+
+            return slot?.resultString || '-';
         },
 
         /**

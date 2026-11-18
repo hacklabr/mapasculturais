@@ -57,6 +57,10 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
             $sub_header['obs'] = i::__('Observações');
         }
 
+        // R06 (#131) — CA-18: colunas de correção por slot quando há correções
+        // de recurso na fase (rótulos do próprio método — Habilitado/Inabilitado).
+        $sub_header += $this->appealReviewSubHeader($job);
+
         if (!$sub_header) {
             return ['header' => [], 'subHeader' => []];
         }
@@ -95,7 +99,7 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
                 'result' => $evaluation['evaluation']['resultString'] ?? null,
                 'status' => $this->evaluationStatusName($evaluation['evaluation']['status'] ?? null),
                 'reasonDisqualification' => $registration_data['evaluationResultString']
-            ] + $evaluation_data;
+            ] + $evaluation_data + $this->appealReviewColumns($evaluation['evaluation'] ?? null);
         }
 
         return $result;

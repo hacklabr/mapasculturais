@@ -46,7 +46,21 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
     }
 
     protected function _getEvaluationResultHeader(Job $job, $properties, $column_prefixes) : array {
-        return ['header' => [], 'subHeader' => []];
+        // R06 (#131) — CA-18: colunas de correção por slot quando há correções
+        // de recurso na fase (rótulos do próprio método — Válida/Inválida).
+        $sub_header = $this->appealReviewSubHeader($job);
+
+        if (!$sub_header) {
+            return ['header' => [], 'subHeader' => []];
+        }
+
+        $columns_evaluations = array_splice($column_prefixes, 0, count($sub_header));
+        $first_column_evaluation = reset($columns_evaluations);
+        $last_column_evaluation = end($columns_evaluations);
+
+        $header["{$first_column_evaluation}1:{$last_column_evaluation}1"] = i::__('Avaliações');
+
+        return ['header' => $header, 'subHeader' => $sub_header];
     }
 
     protected function _getEvaluationDataBatch(Job $job, $evaluations) : array {
@@ -67,7 +81,7 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
                 + $this->getEvaluatorSpreadsheetColumns($evaluation['valuer'] ?? null) + [
                 'result' => $evaluation['evaluation']['resultString'] ?? null,
                 'status' => $this->evaluationStatusName($evaluation['evaluation']['status'] ?? null),
-            ] + $result_evaluation_data;
+            ] + $result_evaluation_data + $this->appealReviewColumns($evaluation['evaluation'] ?? null);
         }
 
         return $result;

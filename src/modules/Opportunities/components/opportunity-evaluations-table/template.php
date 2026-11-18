@@ -6,6 +6,7 @@
  */
 
 use MapasCulturais\i;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use SealExemption\SealExemptionService;
 
 $this->layout = 'entity';
@@ -14,12 +15,16 @@ $opportunity = $this->getOpportunityFromEntity($entity);
 $has_seal_exemption_config = SealExemptionService::hasActiveConfig(
     $opportunity->evaluationMethodConfiguration?->sealExemptionConfig
 );
-// F4 (#20): colunas de nota por slot visíveis por padrão (CA-11)
+// F4 (#20): colunas de nota por slot visíveis por padrão (CA-11).
+// R06 (#131) — CA-18: "Diferença" só no método técnico (o da fase principal,
+// quando o contexto é a fase de recurso).
+$show_score_difference = ResultFormatter::showDifference(ResultFormatter::methodForOpportunity($opportunity));
+$difference_field = $show_score_difference ? ", 'scoreDifference'" : '';
 $required_fields = 'number,committeeSequentialNumber,valuerUserId,valuerAgentId,evaluator,result,status,delete';
-$visible_fields = "['agent', 'number', 'committeeSequentialNumber', 'valuerUserId', 'valuerAgentId', 'evaluator', 'result', 'originalScore', 'correctedScore', 'scoreDifference', 'status', 'coletivo', 'goalStatuses']";
+$visible_fields = "['agent', 'number', 'committeeSequentialNumber', 'valuerUserId', 'valuerAgentId', 'evaluator', 'result', 'originalScore', 'correctedScore'{$difference_field}, 'status', 'coletivo', 'goalStatuses']";
 if ($has_seal_exemption_config) {
     $required_fields = 'number,committeeSequentialNumber,valuerUserId,valuerAgentId,evaluator,result,status,sealExemptionStatus,sealExemptionTimestamp,delete';
-    $visible_fields = "['agent', 'number', 'committeeSequentialNumber', 'valuerUserId', 'valuerAgentId', 'evaluator', 'result', 'originalScore', 'correctedScore', 'scoreDifference', 'status', 'sealExemption', 'coletivo', 'goalStatuses']";
+    $visible_fields = "['agent', 'number', 'committeeSequentialNumber', 'valuerUserId', 'valuerAgentId', 'evaluator', 'result', 'originalScore', 'correctedScore'{$difference_field}, 'status', 'sealExemption', 'coletivo', 'goalStatuses']";
 }
 
 $this->import('

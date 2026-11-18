@@ -101,7 +101,12 @@ app.component('opportunity-registrations-table', {
         const defaultAvailable = $MAPAS.config.opportunityRegistrationTable.defaultAvailable;
         
         let avaliableFields = defaultAvailable.length > 0 ? [...defaultAvailable] : [];
-        let visible = this.visibleColumns.join(',');
+        // R06 (#131) — CA-18: "Diferença" só existe no método técnico (o da
+        // fase principal, quando a fase em contexto é a de recurso).
+        const appealScoreShowDifference = $MAPAS.config.opportunityRegistrationTable.appealScoreShowDifference !== false;
+        let visible = this.visibleColumns
+            .filter((column) => appealScoreShowDifference || column !== 'scoreDifference')
+            .join(',');
         let order = 'status DESC,consolidatedResult DESC';
         let consolidatedResultOrder = 'consolidatedResult';
 
@@ -235,6 +240,7 @@ app.component('opportunity-registrations-table', {
             appealCorrectionEnabled: appeal_correction_enabled,
             appealMainPhaseId: appeal_context?.mainPhaseId ?? null,
             appealMainRegistrations: {},
+            appealScoreShowDifference,
             isAffirmativePoliciesActive,
             hadTechnicalEvaluationPhase,
             isTechnicalEvaluationPhase,
@@ -556,9 +562,15 @@ app.component('opportunity-registrations-table', {
         },
 
         // F4 (#20): colunas de média/nota — null vira "-", números sem zeros à direita.
+        // R06 (#131) — CA-18: métodos não-técnicos retornam strings de exibição
+        // (rótulos do resultado no vocabulário do método) — passam direto.
         formatScoreColumn(value) {
-            if (value === null || value === undefined) {
+            if (value === null || value === undefined || value === '') {
                 return '-';
+            }
+
+            if (typeof value === 'string' && value.trim() !== '' && !Number.isFinite(Number(value))) {
+                return value;
             }
 
             const number = Number(value);

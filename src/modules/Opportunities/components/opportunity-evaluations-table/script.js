@@ -342,9 +342,15 @@ app.component('opportunity-evaluations-table', {
         },
 
         // F4 (#20): colunas de nota — null vira "-", números sem zeros à direita.
+        // R06 (#131) — CA-18: métodos não-técnicos retornam strings de exibição
+        // (rótulos do resultado no vocabulário do método) — passam direto.
         formatScoreColumn(value) {
-            if (value === null || value === undefined) {
+            if (value === null || value === undefined || value === '') {
                 return '-';
+            }
+
+            if (typeof value === 'string' && value.trim() !== '' && !Number.isFinite(Number(value))) {
+                return value;
             }
 
             const number = Number(value);

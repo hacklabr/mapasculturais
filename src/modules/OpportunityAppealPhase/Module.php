@@ -12,6 +12,7 @@ use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\RegistrationStep;
 use MapasCulturais\i;
 use OpportunityAppealPhase\AppealReview\Notifier;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview;
 
 class Module extends \MapasCulturais\Module {
@@ -607,15 +608,18 @@ class Module extends \MapasCulturais\Module {
     /**
      * Colunas por slot (avaliação), computadas no findResult da ApiQuery:
      *
-     * - originalScore: nota do slot ANTES da primeira correção aplicada
+     * - originalScore: resultado do slot ANTES da primeira correção aplicada
      *   (registration_appeal_review com status SENT, menor id); sem correção,
-     *   é a própria nota vigente (snapshot originalScore da designação);
-     * - correctedScore: nota vigente (result pós-correção in-place);
-     * - scoreDifference: correctedScore − originalScore.
+     *   é o próprio resultado vigente (snapshot originalScore/originalValue
+     *   da designação);
+     * - correctedScore: resultado vigente (result pós-correção in-place);
+     * - scoreDifference: corrigida − original (somente método técnico).
      *
-     * Formato por método, derivado do `result` como as listas já exibem:
-     * técnico = pontuação ponderada; documental = 1/−1 (válida/inválida);
-     * simples = código do status. Resultados não numéricos → null.
+     * Formato por método (R06/#131 — CA-18): técnico mantém o pipeline
+     * numérico (originalScore/correctedScore/scoreDifference como números);
+     * simplificada/documental/habilitação exibem o RÓTULO do resultado no
+     * vocabulário do próprio método (ResultFormatter::formatValue) e a
+     * diferença é sempre null (a coluna não é exibida pelos consumidores).
      *
      * Só computa quando as chaves foram pedidas no @select (a chave existe,
      * null, nas linhas); queries que não pedem não pagam o custo.
@@ -647,11 +651,29 @@ class Module extends \MapasCulturais\Module {
 
         foreach ($result as &$row) {
             $id = (int) ($row['id'] ?? 0);
+            $method = $snapshot[$id]['method'] ?? null;
             $current = $snapshot[$id]['current'] ?? null;
             $original = $snapshot[$id]['original'] ?? null;
 
             // Sem correção aplicada: original é a nota vigente.
             $original = $original ?? $current;
+
+            if (!ResultFormatter::isNumericMethod($method)) {
+                if ($wants_original) {
+                    $row['originalScore'] = ResultFormatter::formatValue($method, $original);
+                }
+                if ($wants_corrected) {
+                    $row['correctedScore'] = ResultFormatter::formatValue($method, $current);
+                }
+                if ($wants_difference) {
+                    // CA-18: fora do método técnico não existe coluna de diferença.
+                    $row['scoreDifference'] = null;
+                }
+                continue;
+            }
+
+            $original = $this->toNumericScore($original);
+            $current = $this->toNumericScore($current);
 
             if ($wants_original) {
                 $row['originalScore'] = $original;
@@ -715,12 +737,19 @@ class Module extends \MapasCulturais\Module {
     /**
      * Colunas por inscrição (lista de inscritos), computadas no findResult:
      *
-     * - averageCorrectedScore: média das notas vigentes dos slots ENVIADOS
-     *   (mesma base do getSentEvaluations — consolidação vigente);
-     * - averageOriginalScore: média recomputada trocando, em cada slot
-     *   corrigido, a nota vigente pela originalScore da designação aplicada;
-     * - scoreDifference: média corrigida − média original (sem nenhuma
-     *   correção: médias iguais, diferença 0; sem notas numéricas: null).
+     * - Método técnico: médias numéricas (comportamento original, byte a byte):
+     *   - averageCorrectedScore: média das notas vigentes dos slots ENVIADOS
+     *     (mesma base do getSentEvaluations — consolidação vigente);
+     *   - averageOriginalScore: média recomputada trocando, em cada slot
+     *     corrigido, a nota vigente pela originalScore da designação aplicada;
+     *   - scoreDifference: média corrigida − média original.
+     *
+     * - Demais métodos (R06/#131 — CA-18): as duas colunas exibem o
+     *   CONSOLIDADO no formato do método (ResultFormatter): a "corrigida" é o
+     *   consolidado vigente dos slots enviados; a "original" é o consolidado
+     *   recomputado com os valores de pré-correção (snapshot das designações
+     *   aplicadas). scoreDifference é null (coluna não exibida) — média
+     *   aritmética de códigos de status/1/-1 não tem semântica.
      *
      * @param array<int, array<string, mixed>> $result
      */
@@ -749,10 +778,16 @@ class Module extends \MapasCulturais\Module {
         // de mesmo número na fase principal, não na avaliação do recurso.
         $score_source = $this->mapAppealToMainRegistrations($registration_ids);
 
-        $rows = $this->fetchScoresByRegistration(array_values(array_unique(array_merge(
+        $score_registration_ids = array_values(array_unique(array_merge(
             $registration_ids,
             array_values($score_source)
-        ))));
+        )));
+
+        // Método da fase de onde vêm as notas (na linha da fase de recurso,
+        // o método da fase PRINCIPAL — é ele que define o formato das colunas).
+        $method_by_registration = $this->fetchEvaluationMethodsByRegistration($score_registration_ids);
+
+        $rows = $this->fetchScoresByRegistration($score_registration_ids);
 
         $by_registration = [];
         foreach ($rows as $row) {
@@ -768,14 +803,36 @@ class Module extends \MapasCulturais\Module {
         foreach ($result as &$row) {
             $registration_id = (int) ($row['id'] ?? 0);
             $source_id = $score_source[$registration_id] ?? $registration_id;
-            $evaluations = $by_registration[$source_id] ?? [];
+            $method = $method_by_registration[$source_id] ?? null;
+            $evaluations = $this->resolveOriginalSlotValues($method, $by_registration[$source_id] ?? []);
+
+            if (!ResultFormatter::isNumericMethod($method)) {
+                $current_values = array_column($evaluations, 'current');
+                $original_values = array_map(static fn ($e) => $e['original'] ?? $e['current'], $evaluations);
+
+                if ($wants_original) {
+                    $row['averageOriginalScore'] = $evaluations
+                        ? ResultFormatter::formatValue($method, ResultFormatter::consolidate($method, $original_values))
+                        : null;
+                }
+                if ($wants_corrected) {
+                    $row['averageCorrectedScore'] = $evaluations
+                        ? ResultFormatter::formatValue($method, ResultFormatter::consolidate($method, $current_values))
+                        : null;
+                }
+                if ($wants_difference) {
+                    // CA-18: fora do método técnico não existe coluna de diferença.
+                    $row['scoreDifference'] = null;
+                }
+                continue;
+            }
 
             $corrected_values = [];
             $original_values = [];
 
             foreach ($evaluations as $evaluation) {
-                $current = $evaluation['current'];
-                $original = $evaluation['original'] ?? $current;
+                $current = $this->toNumericScore($evaluation['current']);
+                $original = $this->toNumericScore($evaluation['original'] ?? $evaluation['current']);
 
                 $corrected_values[] = $current;
                 $original_values[] = $original;
@@ -799,10 +856,12 @@ class Module extends \MapasCulturais\Module {
     }
 
     /**
-     * Nota vigente e nota original (primeira correção aplicada) por avaliação.
+     * Resultado vigente, resultado original (primeira correção aplicada) e
+     * método da fase por avaliação (valores CRUS — a formatação por método
+     * acontece no consumidor).
      *
      * @param int[] $evaluation_ids
-     * @return array<int, array{current: ?float, original: ?float}>
+     * @return array<int, array{current: mixed, original: mixed, method: ?string}>
      */
     private function fetchCurrentAndOriginalScores(array $evaluation_ids): array
     {
@@ -819,26 +878,74 @@ class Module extends \MapasCulturais\Module {
             SELECT
                 ev.id,
                 ev.result,
+                emc.type AS method,
                 (
                     SELECT r.original_score
                     FROM registration_appeal_review r
                     WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
-                ) AS original_score
+                ) AS original_score,
+                (
+                    SELECT r.original_value
+                    FROM registration_appeal_review r
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
+                    ORDER BY r.id ASC
+                    LIMIT 1
+                ) AS original_value
             FROM registration_evaluation ev
+            JOIN registration reg ON reg.id = ev.registration_id
+            LEFT JOIN evaluation_method_configuration emc ON emc.opportunity_id = reg.opportunity_id
             WHERE ev.id IN ({$ids})
         ");
 
         $snapshot = [];
         foreach ($rows as $row) {
-            $snapshot[(int) $row['id']] = [
-                'current' => $this->toNumericScore($row['result']),
-                'original' => $this->toNumericScore($row['original_score']),
+            $id = (int) $row['id'];
+            $snapshot[$id] = [
+                'current' => $row['result'],
+                'original' => $this->resolveOriginalSlotValue(
+                    $row['method'],
+                    $id,
+                    $row['original_score'],
+                    $row['original_value'],
+                    $row['result']
+                ),
+                'method' => $row['method'] !== null ? (string) $row['method'] : null,
             ];
         }
 
         return $snapshot;
+    }
+
+    /**
+     * Método de avaliação (EMC) da oportunidade de cada inscrição.
+     *
+     * @param int[] $registration_ids
+     * @return array<int, ?string> id da inscrição => slug do método
+     */
+    private function fetchEvaluationMethodsByRegistration(array $registration_ids): array
+    {
+        if (!$registration_ids) {
+            return [];
+        }
+
+        $app = App::i();
+        $ids = implode(',', array_map('intval', $registration_ids));
+
+        $rows = $app->em->getConnection()->fetchAllAssociative("
+            SELECT reg.id, emc.type AS method
+            FROM registration reg
+            LEFT JOIN evaluation_method_configuration emc ON emc.opportunity_id = reg.opportunity_id
+            WHERE reg.id IN ({$ids})
+        ");
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[(int) $row['id']] = $row['method'] !== null ? (string) $row['method'] : null;
+        }
+
+        return $map;
     }
 
     /**
@@ -881,6 +988,7 @@ class Module extends \MapasCulturais\Module {
     /**
      * Notas por inscrição, apenas avaliações ENVIADAS (ev.status = 2 =
      * RegistrationEvaluation::STATUS_SENT — mesma base de getSentEvaluations).
+     * Valores crus (result/original_score/original_value).
      *
      * @param int[] $registration_ids
      * @return array<int, array<string, mixed>>
@@ -896,6 +1004,7 @@ class Module extends \MapasCulturais\Module {
 
         return $app->em->getConnection()->fetchAllAssociative("
             SELECT
+                ev.id,
                 ev.registration_id,
                 ev.result AS current,
                 (
@@ -904,7 +1013,14 @@ class Module extends \MapasCulturais\Module {
                     WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
                     ORDER BY r.id ASC
                     LIMIT 1
-                ) AS original
+                ) AS original_score,
+                (
+                    SELECT r.original_value
+                    FROM registration_appeal_review r
+                    WHERE r.original_evaluation_id = ev.id AND r.sent_timestamp IS NOT NULL
+                    ORDER BY r.id ASC
+                    LIMIT 1
+                ) AS original_value
             FROM registration_evaluation ev
             WHERE ev.registration_id IN ({$ids})
                 AND ev.status = 2
@@ -912,8 +1028,82 @@ class Module extends \MapasCulturais\Module {
     }
 
     /**
-     * Resultado do slot como número (técnico: pontuação; documental: 1/−1;
-     * simples: código do status). Não numérico → null.
+     * Resolve, para cada slot do conjunto, o valor ORIGINAL (pré-correção)
+     * no formato cru do método (R06/#131 — CA-18).
+     *
+     * @param array<int, array<string, mixed>> $evaluations
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveOriginalSlotValues(?string $method, array $evaluations): array
+    {
+        foreach ($evaluations as &$evaluation) {
+            $evaluation['original'] = $this->resolveOriginalSlotValue(
+                $method,
+                (int) $evaluation['id'],
+                $evaluation['original_score'] ?? null,
+                $evaluation['original_value'] ?? null,
+                $evaluation['current'] ?? null
+            );
+        }
+
+        return $evaluations;
+    }
+
+    /**
+     * Valor original do slot: snapshot numérico (original_score — técnico,
+     * simplificada e documental) ou, para resultados não numéricos
+     * (habilitação: valid/invalid), recomputado do snapshot originalValue
+     * pelo método do slot. Sem correção aplicada, o vigente.
+     */
+    private function resolveOriginalSlotValue(?string $method, int $evaluation_id, mixed $original_score, mixed $original_value, mixed $current): mixed
+    {
+        if ($original_score !== null) {
+            return $original_score;
+        }
+
+        if (!ResultFormatter::isNumericMethod($method) && $original_value !== null) {
+            $recomputed = $this->recomputeSlotResult($evaluation_id, (string) $original_value);
+            if ($recomputed !== null) {
+                return $recomputed;
+            }
+        }
+
+        return $current;
+    }
+
+    /**
+     * Recalcula o resultado de um slot a partir de um evaluationData salvo
+     * (snapshot originalValue da designação), delegando ao método do próprio
+     * slot — mesmo padrão de AppealReview\Service::computeScore, sobre uma
+     * entidade temporária NÃO gerenciada (não toca no slot real).
+     */
+    private function recomputeSlotResult(int $evaluation_id, string $evaluation_data_json): mixed
+    {
+        $app = App::i();
+
+        $data = json_decode($evaluation_data_json);
+        if (!($data instanceof \stdClass)) {
+            return null;
+        }
+
+        $slot = $app->repo('RegistrationEvaluation')->find($evaluation_id);
+        if (!$slot) {
+            return null;
+        }
+
+        $tmp = new RegistrationEvaluation();
+        $tmp->registration = $slot->registration;
+        $tmp->user = $slot->user;
+        $tmp->setEvaluationData($data);
+
+        return $tmp->result;
+    }
+
+    /**
+     * Resultado do slot como número — usado somente no pipeline do método
+     * técnico (e de métodos desconhecidos, por segurança): pontuação ponderada.
+     * Métodos com rótulo (simple/documentary/qualification) passam pelo
+     * ResultFormatter; não numérico → null.
      */
     private function toNumericScore(mixed $value): ?float
     {
