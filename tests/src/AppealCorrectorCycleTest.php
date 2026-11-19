@@ -374,4 +374,58 @@ class AppealCorrectorCycleTest extends TestCase
         $slot = App::i()->repo('RegistrationEvaluation')->find($scenario['slot']->id);
         $this->assertSame('invalid', ((array) $slot->getEvaluationData())[$field_a_name]['evaluation'], 'Campo liberado corrigido in-place.');
     }
+
+    /**
+     * R06 (#134) — CA-21: o flag de autoaplicação atravessa o ciclo do
+     * corretor — o ambiente o expõe (transparência do efeito), o rascunho o
+     * preserva e o ENVIO aplica o resultado no status da inscrição pelo
+     * caminho canônico do core.
+     */
+    function testAutoApplyFlagPersistsThroughCycleAndAppliesOnSend(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::simple);
+
+        $this->login($scenario['admin']);
+        $created = $this->dispatch(
+            $this->requestFactory->POST('registrationappealreview', 'index', [], [
+                'originalEvaluation' => $scenario['slot']->id,
+                'correctorUser' => $scenario['committeeUser']->id,
+                'autoApply' => true,
+            ])
+        );
+        $this->assertEquals(200, $created['status'], 'Designação com autoaplicação em método simples: ' . json_encode($created['json']));
+        $review_id = (int) $created['json']['id'];
+
+        $corrector = $scenario['committeeUser'];
+
+        // Ambiente do corretor expõe o flag (aviso do efeito no envio).
+        $environment = $this->environment($review_id, $corrector);
+        $this->assertEquals(200, $environment['status']);
+        $this->assertTrue((bool) $environment['json']['autoApply'], 'Ambiente deve avisar que o resultado será autoaplicado.');
+
+        $status_before = (int) App::i()->repo('Registration')->find($scenario['registration']->id)->status;
+
+        // Rascunho preserva o flag e NÃO aplica nada.
+        $data = ['status' => '10', 'obs' => 'recurso deferido: selecionada'];
+        $draft = $this->applyCorrection($scenario['slot'], $data, draft: true);
+        $this->assertEquals(200, $draft['status']);
+
+        /** @var RegistrationAppealReview $review */
+        $review = App::i()->repo(RegistrationAppealReview::class)->find($review_id);
+        $this->assertSame(RegistrationAppealReview::STATUS_DRAFT, (int) $review->status);
+        $this->assertTrue((bool) $review->autoApply, 'Rascunho preserva o flag de autoaplicação.');
+        $this->assertSame($status_before, (int) App::i()->repo('Registration')->find($scenario['registration']->id)->status, 'Rascunho não aplica resultado.');
+
+        // Envio definitivo: corrige in-place, reconsolida E aplica o status.
+        $sent = $this->applyCorrection($scenario['slot'], $data, draft: false);
+        $this->assertEquals(200, $sent['status'], 'Envio com autoaplicação: ' . json_encode($sent['json']));
+
+        $registration = App::i()->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame(10, (int) $registration->status, 'Envio com autoaplicação aplica o consolidado (10) no status da inscrição.');
+        $this->assertSame('10', (string) $registration->consolidatedResult);
+
+        $review = App::i()->repo(RegistrationAppealReview::class)->find($review_id);
+        $this->assertSame(RegistrationAppealReview::STATUS_SENT, (int) $review->status);
+        $this->assertTrue((bool) $review->autoApply, 'Flag permanece registrado na designação enviada (auditoria).');
+    }
 }

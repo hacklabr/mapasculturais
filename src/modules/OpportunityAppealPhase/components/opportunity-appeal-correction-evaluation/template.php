@@ -22,6 +22,9 @@ $this->import('
     <mc-alert v-else-if="error" type="danger">{{ error.message }}</mc-alert>
 
     <template v-else>
+        <?php /* R06 (#133 rework — CA-20): gestor autorizado visualiza em modo somente leitura (payload readOnly) */ ?>
+        <mc-alert v-if="isReadOnlyView" type="warning">{{ text('readonly-notice') }}</mc-alert>
+
         <div class="opportunity-appeal-correction-evaluation__workspace">
             <section class="opportunity-appeal-correction-evaluation__registration">
                 <mc-card>
@@ -169,6 +172,12 @@ $this->import('
                         <dt><?= i::__('Tipo de correção') ?></dt>
                         <dd>
                             <span class="opportunity-appeal-correction-evaluation__badge">{{ correctionTypeLabel }}</span>
+                        </dd>
+                    </div>
+                    <div v-if="environment.autoApply" class="opportunity-appeal-correction-evaluation__info opportunity-appeal-correction-evaluation__info--wide">
+                        <dt><?= i::__('Autoaplicação do resultado') ?></dt>
+                        <dd>
+                            <span class="opportunity-appeal-correction-evaluation__badge">{{ text('auto-apply-active') }}</span>
                         </dd>
                     </div>
                 </dl>
@@ -542,7 +551,8 @@ $this->import('
             </template>
         </mc-card>
 
-        <mc-alert v-if="isLocked" type="warning"><?= i::__('Correção enviada, edição bloqueada.') ?></mc-alert>
+        <?php /* Aviso de bloqueio pós-envio: somente quando NÃO é a visão somente-leitura do gestor (que já tem o aviso próprio no topo) */ ?>
+        <mc-alert v-if="isLocked && !isReadOnlyView" type="warning"><?= i::__('Correção enviada, edição bloqueada.') ?></mc-alert>
 
         <div class="opportunity-appeal-correction-evaluation__actions" v-if="!isLocked">
             <button class="button button--primary-outline" :class="{'disabled': savingDraft}" @click="saveDraft()">

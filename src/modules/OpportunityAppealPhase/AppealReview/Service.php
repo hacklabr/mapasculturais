@@ -84,7 +84,7 @@ class Service
             $app->disableAccessControl();
 
             if ($is_official) {
-                $this->applyOfficialCorrection($slot, $merged, $revision_message);
+                $this->applyOfficialCorrection($slot, $review, $merged, $revision_message);
             } else {
                 $this->applyRecordCorrection($slot, $merged, $revision_message);
             }
@@ -151,7 +151,12 @@ class Service
         return $review;
     }
 
-    private function applyOfficialCorrection(RegistrationEvaluation $slot, array $merged, string $revision_message): void
+    /**
+     * Aplica a correção oficial: slot in-place + reconsolidação e, quando a
+     * designação tem autoApply (R06/#134 — CA-21), aplica o resultado
+     * consolidado no status da inscrição pelo caminho canônico do core.
+     */
+    private function applyOfficialCorrection(RegistrationEvaluation $slot, RegistrationAppealReview $review, array $merged, string $revision_message): void
     {
         $app = App::i();
 
@@ -166,6 +171,37 @@ class Service
 
         $registration = $slot->registration;
         $registration->consolidateResult(true, $slot);
+
+        /*
+         * R06 (#134) — CA-21: autoaplicação do resultado no envio da correção.
+         *
+         * D1 (design §0): reuso do caminho canônico do core — mesma chamada que
+         * a aplicação manual do gestor percorre (`send:after` de avaliação,
+         * Opportunities/Module.php), sem segundo mecanismo de aplicação.
+         * D2: no método técnico o próprio core é no-op (`useAutoApplication()`
+         * false), mantendo a classificação como aplicação manual.
+         * A chamada fica DENTRO da transação de applyCorrection: correção e
+         * eventual mudança de status são atômicas. Os hooks canônicos de status
+         * (selos, notificações, requalificação entre fases) disparam exatamente
+         * como na aplicação manual; os hooks de recurso do módulo ficam
+         * naturalmente silenciosos (alvo é a inscrição da fase principal).
+         */
+        if ($review->autoApply) {
+            $status_before = $registration->status;
+
+            $evaluation_method = $registration->opportunity->evaluationMethod;
+            if ($evaluation_method) {
+                $evaluation_method->applyConsolidatedResult($registration);
+            }
+
+            if ($registration->status != $status_before) {
+                // Auditoria: registra na revisão do slot que o resultado foi autoaplicado.
+                $this->setLastRevisionMessage(
+                    $slot,
+                    $revision_message . ' ' . i::__('(resultado consolidado autoaplicado no status da inscrição da fase principal)')
+                );
+            }
+        }
 
         $app->enqueueEntityToPCacheRecreation($registration);
         $app->persistPCachePendingQueue();
