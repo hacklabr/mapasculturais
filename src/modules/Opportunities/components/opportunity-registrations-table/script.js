@@ -125,11 +125,15 @@ app.component('opportunity-registrations-table', {
         const appeal_correction_enabled = appeal_context != null;
 
         /*
-            R06 (#134) — CA-21: seleção em lote + ação "marcar autoaplicação"
-            somente no contexto da fase de recurso com método da fase
+            R06 (#134) — CA-21: botão "Autoaplicar resultado" + modal de
+            seleção em lote (override 2026-11-18, teste manual do PR #137:
+            a coluna de seleção inline quebrava o layout da tabela).
+            Somente no contexto da fase de recurso com método da fase
             PRINCIPAL não-técnico (contorno D2: técnica mantém classificação
             manual). O método vem do init desta tabela (appealScoreMethod,
-            resolvido via ResultFormatter::methodForOpportunity).
+            resolvido via ResultFormatter::methodForOpportunity) e o
+            contexto de gestor @control vem da presença de appealContexts
+            (init do opportunity-appeal-correction-assignment).
         */
         const appeal_score_method = $MAPAS.config.opportunityRegistrationTable.appealScoreMethod ?? null;
         const appeal_bulk_auto_apply_enabled = appeal_correction_enabled
@@ -254,9 +258,6 @@ app.component('opportunity-registrations-table', {
             appealMainRegistrations: {},
             appealScoreShowDifference,
             appealBulkAutoApplyEnabled: appeal_bulk_auto_apply_enabled,
-            selectedRegistrationIds: [],
-            appealBulkAutoApplyApplying: false,
-            appealBulkDesignations: null,
             isAffirmativePoliciesActive,
             hadTechnicalEvaluationPhase,
             isTechnicalEvaluationPhase,
@@ -846,124 +847,21 @@ app.component('opportunity-registrations-table', {
         },
 
         /**
-         * R06 (#134) — CA-21: marca autoaplicação em LOTE nas designações das
-         * inscrições (recursos) selecionadas na tabela da fase de recurso.
-         *
-         * Fluxo: linhas selecionadas (entity-table selecionável) → inscrição
-         * da fase principal por `number` (mesmo mecanismo do botão de
-         * designação, cacheado) → designações da oportunidade em 1 chamada
-         * (listagem por oportunidade, CA-20/#133) → POST
-         * /registrationappealreview/bulkAutoApply com os ids das designações
-         * → feedback com contagens (marcadas / ignoradas+motivos).
+         * R06 (#134) — CA-21: abre o modal de autoaplicação em lote
+         * (override 2026-11-18: a seleção saiu da tabela — coluna de
+         * seleção quebrava o layout — e vive no modal
+         * opportunity-appeal-bulk-auto-apply, aberto por evento global na
+         * mesma interface pública do modal de designação). O modal resolve
+         * a fase principal a partir do id da fase de recurso (appealContexts).
          */
-        async appealBulkAutoApply(entities) {
-            const selected_ids = this.selectedRegistrationIds || [];
-
-            if (!selected_ids.length || !this.appealBulkAutoApplyEnabled || this.appealBulkAutoApplyApplying) {
+        openAppealBulkAutoApply() {
+            if (!this.appealBulkAutoApplyEnabled) {
                 return;
             }
 
-            const selected_rows = (entities || []).filter(entity => selected_ids.includes(entity.id));
-            if (!selected_rows.length) {
-                this.messages.error(this.text('autoaplicação em lote: erro'));
-                return;
-            }
-
-            this.appealBulkAutoApplyApplying = true;
-
-            try {
-                // 1. Inscrições da fase principal correspondentes aos recursos selecionados.
-                const main_registration_ids = [];
-                for (const row of selected_rows) {
-                    const main_registration = await this.findMainPhaseRegistration(row);
-                    if (main_registration) {
-                        main_registration_ids.push(parseInt(main_registration.id, 10));
-                    }
-                }
-
-                if (!main_registration_ids.length) {
-                    this.messages.error(this.text('inscrição da fase principal não encontrada'));
-                    return;
-                }
-
-                // 2. Designações da oportunidade (1 chamada, cacheada por abertura).
-                const designation_ids = await this.fetchAppealDesignationIds(main_registration_ids);
-                if (!designation_ids.length) {
-                    this.messages.error(this.text('autoaplicação em lote: sem designações'));
-                    return;
-                }
-
-                // 3. Marcação em lote no backend (1 transação, relatório por item).
-                const api = new API('registrationappealreview');
-                const url = Utils.createUrl('registrationappealreview', 'bulkAutoApply');
-                const response = await api.POST(url, { ids: designation_ids });
-
-                if (!response.ok) {
-                    throw await response.json().catch(() => ({}));
-                }
-
-                const result = await response.json();
-                const marked = result?.counts?.marked ?? 0;
-                const skipped = result?.counts?.skipped ?? 0;
-
-                let feedback = this.text('autoaplicação em lote: resultado').replace('%s', marked);
-                feedback = feedback.replace('%s', skipped > 0
-                    ? this.text('autoaplicação em lote: ignoradas')
-                        .replace('%s', skipped)
-                        .replace('%s', this.summarizeBulkSkips(result?.skipped || []))
-                    : '');
-
-                if (marked > 0) {
-                    this.messages.success(feedback);
-                } else {
-                    this.messages.error(feedback);
-                }
-            } catch (error) {
-                console.error('opportunity-registrations-table:appealBulkAutoApply', error);
-                this.messages.error(this.text('autoaplicação em lote: erro'));
-            } finally {
-                this.appealBulkAutoApplyApplying = false;
-            }
-        },
-
-        /**
-         * Designações ativas das inscrições da fase principal informadas:
-         * listagem por oportunidade (CA-20/#133) cacheada por abertura do
-         * painel, filtrada no cliente pelas inscrições selecionadas.
-         *
-         * @return Promise<number[]>
-         */
-        async fetchAppealDesignationIds(main_registration_ids) {
-            if (!this.appealBulkDesignations) {
-                const api = new API('registrationappealreview');
-                this.appealBulkDesignations = await api.fetch('find', {
-                    '@select': 'id,registration,status,correctionType',
-                    'opportunity': `EQ(${this.appealMainPhaseId})`,
-                    '@order': 'id ASC',
-                }, { raw: true, rawProcessor: data => data });
-            }
-
-            const wanted = new Set(main_registration_ids.map(id => parseInt(id, 10)));
-
-            return (this.appealBulkDesignations || [])
-                .filter(review => wanted.has(parseInt(review.registration?.id ?? review.registration, 10)))
-                .map(review => parseInt(review.id, 10));
-        },
-
-        /**
-         * Resumo dos motivos de ignoradas para o feedback (agrupados por motivo).
-         */
-        summarizeBulkSkips(skipped) {
-            const reasons = {};
-
-            for (const item of skipped || []) {
-                const reason = String(item?.reason || '').trim() || '-';
-                reasons[reason] = (reasons[reason] || 0) + 1;
-            }
-
-            return Object.entries(reasons)
-                .map(([reason, count]) => `${count} × ${reason}`)
-                .join('; ');
+            window.dispatchEvent(new CustomEvent('opportunity-appeal-bulk-auto-apply:open', {
+                detail: { phase: { id: this.phase.id } },
+            }));
         },
     }
 });

@@ -130,11 +130,6 @@ $this->import('
               <!-- SÓ O HEADER -->
             <div class="entity-table__table-header-wrapper" v-show="ready" ref="headerWrapper" @scroll="scroll($event)">
                 <div ref="fakeHeaderTable" class="entity-table__table-header">
-                    <div v-if="selectable" class="entity-table__select-all sticky" :style="{width: '36px', minHeight: headerHeight + 'px', display: 'flex', alignItems: 'center'}">
-                        <label class="field__checkbox" :title="text('selecionar todos os registros da página')">
-                            <input type="checkbox" :checked="allRowsSelected(entities)" @change="toggleAllSelected(entities)">
-                        </label>
-                    </div>
                     <div v-if="showIndex" class="entity-table__index sticky entity-table__show-columns" :style="{width: columnsWidth['-index'] ?? '', minHeight: headerHeight + 'px'}">
                         <mc-popover>
                             <div class="entity-table__popover">
@@ -215,11 +210,6 @@ $this->import('
                     <table class="entity-table__table" :style="{marginTop: (-headerHeight + 20) + 'px'}" ref="contentTable">
                         <thead class="table-thead" ref="headerTable">
                             <tr>
-                                <th v-if="selectable" class="table-line" style="width: 36px">
-                                    <label class="field__checkbox">
-                                        <input type="checkbox" :checked="allRowsSelected(entities)" @change="toggleAllSelected(entities)">
-                                    </label>
-                                </th>
                                 <th v-if="showIndex" ref="column--index" class="entity-table__index sticky table-line">&nbsp;</th>
                                 <template v-for="header in columns">
                                     <th  v-if="header.visible" :ref="'column-' + header.slug" :class="{sticky: header.sticky || header.stickyRight}" :style="headerStyle(header)">{{header.text}}</th>
@@ -228,11 +218,6 @@ $this->import('
                         </thead>
                         <tbody >
                             <tr v-for="(entity, index) in entities" :key="entity.__objectId">
-                                <td v-if="selectable" class="table-line" style="width: 36px">
-                                    <label class="field__checkbox">
-                                        <input type="checkbox" :checked="isSelected(entity)" @change="toggleSelected(entity)">
-                                    </label>
-                                </td>
                                 <td v-if="showIndex" class="entity-table__index sticky table-line">{{index+1}}</td>
                                 <template v-for="header in columns" :key="header.slug">
                                     <td v-if="header.visible" :class="{sticky: header.sticky || header.stickyRight}" :style="headerStyle(header)">

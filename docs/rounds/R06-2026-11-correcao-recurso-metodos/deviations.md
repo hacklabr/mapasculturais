@@ -1,6 +1,6 @@
 # R06 — Registro de desvios (declarado vs. implementado)
 
-> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18).
+> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18). Fonte da entrada 7: rework da tarefa #134 após o teste manual do PR #137 (2026-11-18/19 — substitui a UX de seleção em linhas do commit `cc80536820`).
 
 ---
 
@@ -55,3 +55,13 @@
 - **Razão:** mesmo mapeamento (a metadata é a fonte do join SQL), um caminho de query a menos — entidades já hidratadas pelo repositório, sem duplicar a query cru nem tratar SQL/parâmetros à mão; o volume é o número de fases da oportunidade (pequeno por construção).
 - **Decisão:** pendente de verificação pelo facilitador na revisão do commit `19285ee424` (2026-11-18).
 - **Documento de referência atualizado:** design.md §6 (nota as-built).
+
+## #134 — Autoaplicação em lote (CA-21)
+
+### 7. UX da ação em lote: botão + modal em vez de seleção de linhas na tabela
+
+- **Planejado (design.md §3.3):** seleção de linhas na tabela de inscrições da fase de recurso — plumbing de seleção no `entity-table` (prop `selectable`, checkbox no cabeçalho e por linha, emissão `update:selectedIds`) com ação de barra sobre as linhas selecionadas.
+- **Implementado:** botão **"Autoaplicar resultado"** na área de ações da lista (ao lado de "Exportar planilha"; gates inalterados: fase de recurso + gestor `@control` + método não-técnico), que abre o modal `opportunity-appeal-bulk-auto-apply` (`src/modules/OpportunityAppealPhase/components/`) com a lista das designações elegíveis (ativas, oficiais, método não-técnico; inscrição + agente + resultado atual + corretor + prazo + status), checkbox por linha default desmarcado, "Selecionar todos" e confirmação `POST /registrationappealreview/bulkAutoApply` com relatório dentro do modal (marcadas + ignoradas com motivos). O `entity-table` foi **revertido** ao formato anterior ao commit `cc80536820` (sem prop de seleção), e nenhum checkbox inline permanece na tabela.
+- **Razão:** a coluna de seleção injetada fora da estrutura de `<thead>` do `entity-table` **quebrava o layout da tabela** — o cabeçalho era renderizado duas vezes (cabeçalho fake + `thead`, ambos com a célula de seleção) com uma célula solta ao final (evidência da árvore de acessibilidade da página `/lista-de-inscricoes/74/` no teste manual do time, 2026-11-18). O modal também dá contexto na escolha (corretor/prazo/status por designação), que a linha da tabela não dava.
+- **Decisão:** @israelmelo no teste do PR #137.
+- **Documento de referência atualizado:** design.md §3 (nota as-built) + PRD CA-21 (e jornadas J3.3).

@@ -41,7 +41,7 @@ $entity = $this->controller->requestedEntity;
             <?php $this->applyTemplateHook('registration-list-actions', 'after', ['entity' => $entity]); ?>
         </template>
         <div class="col-12"> 
-            <entity-table controller="opportunity" endpoint="findRegistrations" :identifier="identifier" type="registration" :query="query" :limit="100" :sort-options="sortOptions" :order="order" :select="select" :headers="headers" phase:="phase" :columns-config-entity="phase" required="number,options" :visible="visible" :raw-processor="rawProcessor" :selectable="appealBulkAutoApplyEnabled" @update:selectedIds="selectedRegistrationIds = $event" @clear-filters="clearFilters" @remove-filter="removeFilter($event)" show-index :hide-filters="hideFilters" :hide-sort="hideSort" :hide-actions='hideActions' :hide-header="hideHeader">
+            <entity-table controller="opportunity" endpoint="findRegistrations" :identifier="identifier" type="registration" :query="query" :limit="100" :sort-options="sortOptions" :order="order" :select="select" :headers="headers" phase:="phase" :columns-config-entity="phase" required="number,options" :visible="visible" :raw-processor="rawProcessor" @clear-filters="clearFilters" @remove-filter="removeFilter($event)" show-index :hide-filters="hideFilters" :hide-sort="hideSort" :hide-actions='hideActions' :hide-header="hideHeader">
                 <template #title>
                     <slot name="title"></slot>
                 </template>
@@ -52,15 +52,13 @@ $entity = $this->controller->requestedEntity;
                         <h4 class="bold"><?= i::__('Ações:') ?></h4>
                         <div class="opportunity-registration-table__actions-buttons">
                         <?php $this->applyTemplateHook('registration-list-actions-entity-table', 'begin', ['entity' => $entity]); ?>
-                            <!-- R06 (#134) — CA-21: marcação em lote da autoaplicação nas designações das linhas selecionadas (fase de recurso, método não-técnico, gestor com @control). -->
+                            <?php /* R06 (#134) — CA-21: override 2026-11-18 (feedback do teste manual do PR #137): a seleção em lote saiu da tabela (a coluna de seleção quebrava o layout — cabeçalho duplicado) e virou botão na área de ações + modal de seleção. Gates do botão: fase de recurso com gestor @control e método não-técnico (mesma config do init do modal de designação). */ ?>
                             <button
-                                v-if="appealBulkAutoApplyEnabled && selectedRegistrationIds.length > 0"
+                                v-if="appealBulkAutoApplyEnabled"
                                 class="button button--md button--primary"
-                                :class="{ 'disabled': appealBulkAutoApplyApplying }"
-                                :disabled="appealBulkAutoApplyApplying"
-                                @click="appealBulkAutoApply(entities)">
+                                @click="openAppealBulkAutoApply()">
 
-                                {{ appealBulkAutoApplyApplying ? text('autoaplicação em lote: aplicando') : text('Autoaplicar resultado nas selecionadas') }} ({{ selectedRegistrationIds.length }})
+                                <?= i::__('Autoaplicar resultado') ?>
                             </button>
                             <mc-export-spreadsheet :owner="phase" endpoint="registrations" :params="{entityType: 'registration', '@select': spreadsheetQuery['@select'], '@order': spreadsheetQuery['@order'], query: spreadsheetQuery}" group="registrations-spreadsheets"></mc-export-spreadsheet>
                         <?php $this->applyTemplateHook('registration-list-actions-entity-table', 'end', ['entity' => $entity]); ?>

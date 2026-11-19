@@ -49,5 +49,4 @@ return [
     'erro ao salvar padrao global' => i::__('Erro ao salvar padrão global'),
     'buscar colunas' => i::__('Buscar colunas'),
     'nenhuma coluna encontrada' => i::__('Nenhuma coluna encontrada'),
-    'selecionar todos os registros da página' => i::__('Selecionar todos os registros da página'),
 ];
