@@ -176,20 +176,6 @@ class CorrectorEnvironment
     }
 
     /**
-     * Guard da página de correção (CA-20 / #133, rework 2026-11-19):
-     * acesso de VISUALIZAÇÃO — corretor designado OU gestor com `@control`
-     * na fase principal da designação (a escrita segue exclusiva do
-     * corretor; o payload do ambiente decide o que o frontend trava via
-     * readOnly). PermissionDenied PROPAGA: em rota de página o
-     * RoutesManager renderiza a página de erro 403 do tema (HTML) —
-     * errorJson cru é aceitável apenas em endpoint API/AJAX.
-     */
-    public function assertAssignmentAccessible(RegistrationAppealReview $review): void
-    {
-        $this->assertViewable($review);
-    }
-
-    /**
      * CA-20 (#133 rework, 2026-11-19): VISUALIZAÇÃO do ambiente.
      *
      * Corretor designado (qualquer status — histórico incluso) OU gestor
@@ -250,10 +236,11 @@ class CorrectorEnvironment
     }
 
     /**
-     * Guard de visualização (página + payload do ambiente): feature flag +
-     * canView. Quem não pode ver recebe PermissionDenied (o controller do
-     * environment o converte em errorJson 403 — endpoint AJAX; a página o
-     * deixa propagar para o render de erro do tema).
+     * Guard de visualização do payload do ambiente: feature flag + canView.
+     * Quem não pode ver recebe PermissionDenied, que o controller do
+     * environment converte em errorJson 403 — endpoint AJAX; o bloqueio
+     * real dos dados vive aqui (a página de correção é dumb page para
+     * usuário logado desde o rework de 2026-11-19, feedback do PR #137).
      */
     public function assertViewable(RegistrationAppealReview $review, $user = null): void
     {

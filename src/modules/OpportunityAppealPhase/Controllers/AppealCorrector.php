@@ -14,11 +14,14 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview;
  *
  * GET /appealCorrector/environment/{assignmentId}  -> read-only JSON payload
  * GET /appealCorrector/correction/{assignmentId}   -> correction page (CA-20/#133
- *    rework 2026-11-19: acesso de VISUALIZAÇÃO dual — corretor designado OU
- *    gestor com @control na fase principal; o payload carrega readOnly e o
- *    frontend trava a escrita, que segue exclusiva do corretor. Denial na
- *    página renderiza o erro 403 do tema (PermissionDenied propaga); guest
- *    cai no 401/redirect do requireAuthentication)
+ *    rework 2026-11-19, 2ª passada — feedback do teste manual do PR #137:
+ *    a página volta a ser "dumb page" para usuário logado — o bloqueio real
+ *    vive no endpoint de dados (environment → 403 JSON, AJAX). Sem permissão,
+ *    a página carrega e o componente mostra o alerta vermelho de acesso
+ *    negado, sem renderizar nenhum dado da correção (comportamento original
+ *    do produto). Corretor designado escreve; gestor com @control na fase
+ *    principal recebe o payload readOnly; guest cai no 401/redirect do
+ *    requireAuthentication)
  * GET /appealCorrector/assignments                  -> active assignments of the logged user
  */
 class AppealCorrector extends Controller
@@ -87,19 +90,18 @@ class AppealCorrector extends Controller
             $app->pass();
         }
 
-        // CA-20 (#133 rework, 2026-11-19): guard de VISUALIZAÇÃO — corretor
-        // designado OU gestor com @control na fase principal (a escrita
-        // segue exclusiva do corretor; o payload do ambiente decide o que o
-        // frontend trava via readOnly). PermissionDenied PROPAGA para o
-        // RoutesManager, que renderiza a página de erro 403 do tema —
-        // errorJson cru é para endpoint API/AJAX, não para rota de página
-        // (o teste manual do PR #137 pegou JSON cru no lugar do HTML).
-        // Guest já caiu no 401/redirect do requireAuthentication acima.
-        (new CorrectorEnvironment())->assertAssignmentAccessible($review);
-
+        // CA-20 (#133 rework, 2026-11-19 — 2ª passada, feedback do teste
+        // manual do PR #137): a página volta a ser "dumb page" para usuário
+        // logado — SEM guard de visão aqui. O bloqueio real permanece no
+        // endpoint de dados (GET_environment → assertViewable → errorJson
+        // 403, AJAX): usuário logado sem permissão vê a página carregar com
+        // o alerta vermelho de acesso negado do componente e NENHUM dado da
+        // correção (comportamento original do produto). Por isso a view
+        // recebe apenas o id da designação — nenhum dado da correção é
+        // renderizado server-side. Guest já caiu no 401/redirect do
+        // requireAuthentication acima.
         $this->render('correction', [
             'assignmentId' => (int) $review->id,
-            'assignment' => $review,
         ]);
     }
 }

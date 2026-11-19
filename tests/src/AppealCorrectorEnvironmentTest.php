@@ -571,12 +571,14 @@ class AppealCorrectorEnvironmentTest extends TestCase
     }
 
     /**
-     * CA-20 (#133): guard da página de correção — usuário sem designação
-     * recebe o mesmo 403 do endpoint do ambiente. R06 (#133 rework):
-     * denial em rota de PÁGINA renderiza o erro do tema (HTML), não o
-     * errorJson cru do endpoint AJAX.
+     * CA-20 (#133): página de correção para usuário LOGADO sem permissão —
+     * comportamento original do produto, restaurado no rework de
+     * 2026-11-19 (feedback do teste manual do PR #137): a página CARREGA
+     * (200, dumb page) e o componente mostra o alerta vermelho de acesso
+     * negado SEM renderizar nenhum dado da correção — o bloqueio real
+     * permanece no endpoint de dados (environment → 403 JSON, AJAX).
      */
-    function testCorrectionPageForbiddenForWrongUser(): void
+    function testCorrectionPageRendersNoPermissionAlertForWrongUser(): void
     {
         $scenario = $this->createScenario();
         $this->login($scenario['outsider']);
@@ -592,13 +594,34 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $app->reset();
         $app->run($request, false);
 
-        $this->assertEquals(403, $app->response->getStatusCode(), 'Usuário sem permissão de visão recebe 403 antes do render.');
+        $this->assertEquals(200, $app->response->getStatusCode(), 'Usuário logado sem permissão recebe a página (200) — dumb page original.');
         $body = (string) $app->response->getBody();
-        // A página de erro do tema pode enfileirar o script/css do componente
-        // (AssetManager registra por controller); o que prova que a página NÃO
-        // renderizou é a ausência do template do componente em $TEMPLATES.
-        $this->assertStringNotContainsString('"opportunity-appeal-correction-evaluation"', $body, 'Página não pode ser renderizada para usuário errado.');
-        $this->assertStringNotContainsString('"error":true', $body, 'Rota de página não pode responder errorJson cru (deve renderizar o erro do tema).');
+
+        // Página renderizada com o componente e o id da designação.
+        $this->assertStringContainsString('opportunity-appeal-correction-evaluation', $body);
+        $this->assertStringContainsString((string) $scenario['review']->id, $body);
+
+        // Marcador do alerta de acesso negado: os textos do componente são
+        // localizados no HTML ($MAPAS.gettext) — a chave error-forbidden só
+        // existe se o componente foi enfileirado pela página.
+        $this->assertStringContainsString('error-forbidden', $body, 'Alerta de acesso negado (error-forbidden) deve estar disponível ao componente.');
+
+        // NENHUM dado da correção no HTML server-side: nem o número da
+        // inscrição, nem o nome da oportunidade, nem os valores corrigidos.
+        $this->assertStringNotContainsString($scenario['registration']->number, $body, 'Número da inscrição não pode vazar no HTML da página.');
+        $this->assertStringNotContainsString((string) $scenario['registration']->opportunity->name, $body, 'Nome da oportunidade não pode vazar no HTML da página.');
+        $this->assertStringNotContainsString('"c-1":7', $body, 'Valores da correção não podem vazar no HTML da página.');
+        $this->assertStringNotContainsString('"error":true', $body, 'Rota de página não pode responder errorJson cru.');
+
+        // O bloqueio real segue no endpoint de dados: environment → 403 JSON.
+        $env_request = $this->requestFactory->GET(
+            'appealCorrector',
+            'environment',
+            [$scenario['review']->id],
+            ajax: true
+        );
+
+        $this->assertStatus403($env_request, 'Endpoint de dados segue bloqueado (403) para usuário sem permissão.');
     }
 
     function testDesignatedCorrectorCanViewRegistrationForm(): void
@@ -658,7 +681,7 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->login($scenario['manager']);
         $this->assertTrue($builder->canView($review), 'Gestor com @control na fase principal pode visualizar (CA-20).');
         $this->assertFalse($builder->canWrite($review), 'Gestor sem designação NÃO pode escrever — escrita é exclusiva do corretor.');
-        $builder->assertAssignmentAccessible($review); // guard da página não lança para gestor
+        $builder->assertViewable($review); // guard do payload do ambiente não lança para gestor
 
         $this->login($scenario['outsider']);
         $this->assertFalse($builder->canView($review), 'Usuário sem designação e sem @control não pode visualizar.');

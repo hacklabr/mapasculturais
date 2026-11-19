@@ -3,7 +3,12 @@
  * @var MapasCulturais\App $app
  * @var MapasCulturais\Themes\BaseV2\Theme $this
  * @var int $assignmentId
- * @var OpportunityAppealPhase\Entities\RegistrationAppealReview $assignment
+ *
+ * R06 (#133 rework — CA-20): a view recebe APENAS o id da designação —
+ * nenhum dado da correção é passado/renderizado server-side. O conteúdo
+ * chega via AJAX (GET /appealCorrector/environment/{id}), que responde 403
+ * para usuário sem permissão (o componente mostra o alerta de acesso
+ * negado sem renderizar a correção).
  */
 
 use MapasCulturais\i;

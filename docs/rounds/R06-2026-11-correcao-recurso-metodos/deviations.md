@@ -1,6 +1,6 @@
 # R06 — Registro de desvios (declarado vs. implementado)
 
-> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18). Fonte da entrada 7: rework da tarefa #134 após o teste manual do PR #137 (2026-11-18/19 — substitui a UX de seleção em linhas do commit `cc80536820`). Fonte da entrada 8: rework da tarefa #133 após o teste manual do PR #137 (2026-11-19 — visão dual do ambiente de correção).
+> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18). Fonte da entrada 7: rework da tarefa #134 após o teste manual do PR #137 (2026-11-18/19 — substitui a UX de seleção em linhas do commit `cc80536820`). Fonte da entrada 8: rework da tarefa #133 após o teste manual do PR #137 (2026-11-19 — visão dual do ambiente de correção). Fonte da entrada 9: 2ª passada do rework da tarefa #133 após o teste manual do PR #137 (2026-11-19 — página sem-permissão volta ao comportamento original: carrega com alerta interno, sem 403 de página).
 
 ---
 
@@ -75,3 +75,11 @@
 - **Razão:** CA-20 pede que o gestor autorizado **abra o ambiente** das designações existentes; o guard corretor-only bloqueava demais (admin logado recebia 403 — feedback do teste manual do PR #137, 2026-11-19) e a resposta JSON cru em rota de página violava o padrão do tema (erro renderizado). A visão não concede escrita nem amplia dados: o gestor já tem `@control` sobre a inscrição/fase.
 - **Decisão:** @israelmelo no teste do PR #137.
 - **Documento de referência atualizado:** design.md §6 (nota as-built do rework) + PRD CA-20.
+
+### 9. Página do corretor sem guard de visão: alerta interno em vez de 403 de página
+
+- **Planejado (design.md §6.2, como implementado na entrada 8):** usuário logado sem designação e sem `@control` recebe **403 de página** na rota `GET /appealCorrector/correction/{id}` (PermissionDenied propagando para o erro do tema).
+- **Implementado:** o guard de **página** foi removido — a rota volta a ser **dumb page** para usuário logado (mantém `requireAuthentication` → guest 401/redirect, e feature-flag 404), exatamente como antes do #133. Sem permissão, a página **carrega (200)** e o componente `opportunity-appeal-correction-evaluation` mostra o **alerta vermelho de acesso negado** ("Você não tem permissão para acessar o ambiente de correção desta designação.") **sem renderizar nenhum dado da correção**. O bloqueio real segue no endpoint de dados: `GET /appealCorrector/environment/{id}` → `assertViewable` → **403 JSON** (AJAX-appropriate), inalterado. A view server-side passa **apenas o id** da designação (removido o repasse da entidade). Visão dual do gestor (`readOnly`) e modo de escrita do corretor intactos; `assertAssignmentAccessible` (guard da página) removido por ficar sem chamador.
+- **Razão:** comportamento original do produto para esse perfil — feedback do teste manual do PR #137 (2026-11-19): originalmente a página carregava e o componente exibia o alerta de sem-permissão, com os dados server-gated no endpoint do ambiente; o 403 de página (mesmo em HTML do tema) era regressão de UX para usuário logado.
+- **Decisão:** @israelmelo no teste do PR #137.
+- **Documento de referência atualizado:** design.md §6 (nota as-built da 2ª passada) + PRD CA-20.

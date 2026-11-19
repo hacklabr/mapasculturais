@@ -12,7 +12,7 @@ return [
     'committee-opinion-title' => i::__('Parecer da Comissão de Recursos'),
     'no-deadline' => i::__('Sem prazo definido'),
     'readonly-notice' => i::__('Visualização somente leitura — apenas o corretor designado pode enviar correções'),
-    'error-forbidden' => i::__('Você não tem permissão para acessar este ambiente de correção.'),
+    'error-forbidden' => i::__('Você não tem permissão para acessar o ambiente de correção desta designação.'),
     'error-not-found' => i::__('Designação não encontrada ou correção de notas desabilitada.'),
     'error-generic' => i::__('Não foi possível carregar o ambiente de correção.'),
     'note-higher-configured' => i::__('Nota maior que a configurada para avaliação'),
