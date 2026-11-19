@@ -32,7 +32,12 @@ class CorrectorEnvironment
     {
         $app = App::i();
         $this->assertFeatureEnabled();
-        $this->assertCanAccess($review, $app->user);
+
+        // CA-20 (#133 rework, 2026-11-19): VISUALIZAÇÃO dual — corretor
+        // designado OU gestor com @control na fase principal. A escrita
+        // continua exclusiva do corretor (Service::applyCorrection
+        // revalida): o payload carrega readOnly para o frontend travar.
+        $this->assertViewable($review, $app->user);
 
         $slot = $review->originalEvaluation;
         $scope_ids = $this->getReleasedCriteriaIds($review);
@@ -66,6 +71,12 @@ class CorrectorEnvironment
             'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
             'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
             'correctionType' => $review->correctionType,
+            // R06 (#133 rework — CA-20): true quando o VISUALIZADOR não pode
+            // escrever (gestor sem designação, corretor fora da janela ou
+            // designação enviada/encerrada) — o frontend renderiza somente
+            // leitura. Corretor designado, designação ativa e dentro do
+            // prazo recebe false.
+            'readOnly' => !$this->canWrite($review, $app->user),
             // R06 (#134) — CA-21: aviso ao corretor de que o resultado será
             // aplicado no status da inscrição no envio da correção.
             'autoApply' => (bool) $review->autoApply,
@@ -165,37 +176,91 @@ class CorrectorEnvironment
     }
 
     /**
-     * Guard da página de correção (CA-20 / #133): as mesmas regras do
-     * endpoint do ambiente — feature flag, corretor designado, designação
-     * ativa e dentro da janela de prazo — expostas para o controller
-     * aplicar antes do render (PermissionDenied → 403).
+     * Guard da página de correção (CA-20 / #133, rework 2026-11-19):
+     * acesso de VISUALIZAÇÃO — corretor designado OU gestor com `@control`
+     * na fase principal da designação (a escrita segue exclusiva do
+     * corretor; o payload do ambiente decide o que o frontend trava via
+     * readOnly). PermissionDenied PROPAGA: em rota de página o
+     * RoutesManager renderiza a página de erro 403 do tema (HTML) —
+     * errorJson cru é aceitável apenas em endpoint API/AJAX.
      */
     public function assertAssignmentAccessible(RegistrationAppealReview $review): void
     {
-        $this->assertFeatureEnabled();
-        $this->assertCanAccess($review, App::i()->user);
+        $this->assertViewable($review);
     }
 
-    private function assertCanAccess(RegistrationAppealReview $review, $user): void
+    /**
+     * CA-20 (#133 rework, 2026-11-19): VISUALIZAÇÃO do ambiente.
+     *
+     * Corretor designado (qualquer status — histórico incluso) OU gestor
+     * com `@control` na fase PRINCIPAL da inscrição da designação (mesma
+     * âncora de permissão da listagem por oportunidade e do POST_bulk —
+     * sem ampliação: quem só controla a fase de recurso não entra).
+     *
+     * Sem exigência de designação ativa nem janela de prazo: designações
+     * enviadas/encerradas permanecem visíveis para corretor (histórico) e
+     * gestor (acompanhamento).
+     */
+    public function canView(RegistrationAppealReview $review, $user = null): bool
     {
+        $user = $user ?? App::i()->user;
+
         if ($user->is('guest')) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
+        }
+
+        if ($review->correctorUser && $review->correctorUser->equals($user)) {
+            return true;
+        }
+
+        return $review->registration->opportunity->canUser('@control', $user);
+    }
+
+    /**
+     * ESCRITA (corretor designado): regra intacta — designação ativa,
+     * titularidade do corretor e janela de prazo. Espelha a revalidação
+     * de Service::applyCorrection (o envio re-checa no backend; o readOnly
+     * do payload é derivado daqui).
+     */
+    public function canWrite(RegistrationAppealReview $review, $user = null): bool
+    {
+        $user = $user ?? App::i()->user;
+
+        if ($user->is('guest')) {
+            return false;
         }
 
         if (!$review->isActive()) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
 
         if (!$review->correctorUser || !$review->correctorUser->equals($user)) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
 
         $now = new DateTime();
         if ($review->startsAt && $now < $review->startsAt) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
         if ($review->endsAt && $now > $review->endsAt) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Guard de visualização (página + payload do ambiente): feature flag +
+     * canView. Quem não pode ver recebe PermissionDenied (o controller do
+     * environment o converte em errorJson 403 — endpoint AJAX; a página o
+     * deixa propagar para o render de erro do tema).
+     */
+    public function assertViewable(RegistrationAppealReview $review, $user = null): void
+    {
+        $this->assertFeatureEnabled();
+
+        if (!$this->canView($review, $user)) {
+            throw new PermissionDenied($user ?? App::i()->user, $review, 'correctorEnvironment');
         }
     }
 
@@ -488,8 +553,9 @@ class CorrectorEnvironment
             $current = OpportunityPhases::getPreviousPhaseRegistration($current);
         }
 
-        // Leitura privilegiada: o corretor já passou por assertCanAccess; o ??
-        // do PHP NÃO dispara __get de metadados (isset sem __isset), então
+        // Leitura privilegiada: o visualizador já passou por assertViewable
+        // (corretor designado ou gestor com @control); o ?? do PHP NÃO
+        // dispara __get de metadados (isset sem __isset), então
         // `$reg->field_X ?? null` sempre virava null mesmo com valor no banco.
         $app = App::i();
         $app->disableAccessControl();

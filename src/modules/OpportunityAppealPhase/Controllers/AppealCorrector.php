@@ -13,9 +13,12 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview;
  * Ambiente do corretor designado (issue #19 / F3).
  *
  * GET /appealCorrector/environment/{assignmentId}  -> read-only JSON payload
- * GET /appealCorrector/correction/{assignmentId}   -> correction page (CA-20/#133:
- *    mesma guarda do environment — feature flag, corretor designado, designação
- *    ativa e dentro do prazo — aplicada antes do render)
+ * GET /appealCorrector/correction/{assignmentId}   -> correction page (CA-20/#133
+ *    rework 2026-11-19: acesso de VISUALIZAÇÃO dual — corretor designado OU
+ *    gestor com @control na fase principal; o payload carrega readOnly e o
+ *    frontend trava a escrita, que segue exclusiva do corretor. Denial na
+ *    página renderiza o erro 403 do tema (PermissionDenied propaga); guest
+ *    cai no 401/redirect do requireAuthentication)
  * GET /appealCorrector/assignments                  -> active assignments of the logged user
  */
 class AppealCorrector extends Controller
@@ -84,15 +87,15 @@ class AppealCorrector extends Controller
             $app->pass();
         }
 
-        // CA-20 (#133): mesma guarda do endpoint do ambiente (corretor
-        // designado, designação ativa, janela de prazo) antes do render —
-        // usuário errado recebe o mesmo 403; guest já caiu no 401 do
-        // requireAuthentication acima.
-        try {
-            (new CorrectorEnvironment())->assertAssignmentAccessible($review);
-        } catch (PermissionDenied $e) {
-            $this->errorJson(i::__('Sem permissão para acessar o ambiente de correção'), 403);
-        }
+        // CA-20 (#133 rework, 2026-11-19): guard de VISUALIZAÇÃO — corretor
+        // designado OU gestor com @control na fase principal (a escrita
+        // segue exclusiva do corretor; o payload do ambiente decide o que o
+        // frontend trava via readOnly). PermissionDenied PROPAGA para o
+        // RoutesManager, que renderiza a página de erro 403 do tema —
+        // errorJson cru é para endpoint API/AJAX, não para rota de página
+        // (o teste manual do PR #137 pegou JSON cru no lugar do HTML).
+        // Guest já caiu no 401/redirect do requireAuthentication acima.
+        (new CorrectorEnvironment())->assertAssignmentAccessible($review);
 
         $this->render('correction', [
             'assignmentId' => (int) $review->id,

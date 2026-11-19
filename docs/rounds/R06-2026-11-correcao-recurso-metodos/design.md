@@ -199,6 +199,8 @@ A divergência **vigente × aplicado** no simples **não** é corrigida na timel
 
 > **As-built (pós-#133):** três desvios declarados — (1) a âncora de permissão da listagem por oportunidade é sempre a fase principal (`parent`) quando o ID informado é da fase de recurso, não a oportunidade consultada (estritamente mais restritivo); (2) `registration` + `opportunity` combinados na mesma chamada → 400 (determinístico e restritivo); (3) o escopo das fases de recurso é resolvido em PHP pela metadata `appealPhase` (mesmo mapeamento do SQL cru, um caminho de query a menos). Detalhes em `deviations.md` (#133).
 
+> **As-built (rework #133, 2026-11-19 — feedback do teste manual do PR #137):** o reparo 2 acima saiu na 1ª passada como guard **corretor-only** (bloqueava o gestor com `@control` que o CA-20 manda deixar entrar) e respondia **errorJson cru em rota de página**. Rework: acesso de **visualização** dual em `CorrectorEnvironment` — `canView()` = corretor designado (qualquer status, histórico incluso) OU `@control` na fase principal; `canWrite()` = regra de escrita anterior intacta (ativa + titularidade + janela; espelha `Service::applyCorrection`, que revalida no envio) — e o payload do ambiente carrega **`readOnly`** (true para gestor sem designação, corretor fora da janela e designação enviada/encerrada), que o frontend (`opportunity-appeal-correction-evaluation`) consome travando os inputs e ocultando salvar/enviar com aviso "Visualização somente leitura". Denial na página agora **propaga** `PermissionDenied` para o RoutesManager (erro 403 do tema, HTML); `errorJson` permanece só no endpoint AJAX do environment. Guest segue no 401/redirect do `requireAuthentication`. Detalhes em `deviations.md` (entrada 8).
+
 ---
 
 ## 7. Testes

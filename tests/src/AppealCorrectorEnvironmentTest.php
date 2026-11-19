@@ -36,6 +36,7 @@ class AppealCorrectorEnvironmentTest extends TestCase
     /**
      * @return array{
      *   corrector: User,
+     *   manager: User,
      *   outsider: User,
      *   review: RegistrationAppealReview,
      *   slotA: RegistrationEvaluation,
@@ -184,6 +185,7 @@ class AppealCorrectorEnvironmentTest extends TestCase
 
         return [
             'corrector' => $corrector,
+            'manager' => $admin,
             'outsider' => $outsider,
             'review' => $review,
             'slotA' => $slot_a,
@@ -205,6 +207,9 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertArrayHasKey('visibleForm', $payload);
         $this->assertEquals($scenario['registration']->number, $payload['visibleForm']['number']);
         $this->assertNotNull($payload['visibleForm']['agentsSummary']);
+        // R06 (#133 rework — CA-20): corretor designado, ativo e na janela escreve.
+        $this->assertArrayHasKey('readOnly', $payload);
+        $this->assertFalse($payload['readOnly'], 'Corretor designado em janela válida recebe readOnly=false.');
 
         $this->login($scenario['outsider']);
         $this->expectException(PermissionDenied::class);
@@ -395,7 +400,12 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $this->assertStatus403($request);
     }
 
-    function testSentAssignmentRejected(): void
+    /**
+     * R06 (#133 rework — CA-20): designação ENVIADA continua VISÍVEL para o
+     * corretor (histórico), em modo somente leitura (readOnly=true) — a
+     * escrita segue bloqueada (Service::applyCorrection revalida).
+     */
+    function testSentAssignmentViewableReadOnlyForCorrector(): void
     {
         $scenario = $this->createScenario();
         $app = App::i();
@@ -405,8 +415,10 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $app->enableAccessControl();
 
         $this->login($scenario['corrector']);
-        $this->expectException(PermissionDenied::class);
-        (new CorrectorEnvironment())->build($scenario['review']);
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertEquals('sent', $payload['status']);
+        $this->assertTrue($payload['readOnly'], 'Designação enviada é visualizável apenas como leitura.');
     }
 
     function testPayloadExposesCriteriaMetadataAndSlotIdentity(): void
@@ -560,7 +572,9 @@ class AppealCorrectorEnvironmentTest extends TestCase
 
     /**
      * CA-20 (#133): guard da página de correção — usuário sem designação
-     * recebe o mesmo 403 do endpoint do ambiente.
+     * recebe o mesmo 403 do endpoint do ambiente. R06 (#133 rework):
+     * denial em rota de PÁGINA renderiza o erro do tema (HTML), não o
+     * errorJson cru do endpoint AJAX.
      */
     function testCorrectionPageForbiddenForWrongUser(): void
     {
@@ -578,8 +592,13 @@ class AppealCorrectorEnvironmentTest extends TestCase
         $app->reset();
         $app->run($request, false);
 
-        $this->assertEquals(403, $app->response->getStatusCode(), 'Usuário que não é o corretor designado recebe 403 antes do render.');
-        $this->assertStringNotContainsString('opportunity-appeal-correction-evaluation', (string) $app->response->getBody(), 'Página não pode ser renderizada para usuário errado.');
+        $this->assertEquals(403, $app->response->getStatusCode(), 'Usuário sem permissão de visão recebe 403 antes do render.');
+        $body = (string) $app->response->getBody();
+        // A página de erro do tema pode enfileirar o script/css do componente
+        // (AssetManager registra por controller); o que prova que a página NÃO
+        // renderizou é a ausência do template do componente em $TEMPLATES.
+        $this->assertStringNotContainsString('"opportunity-appeal-correction-evaluation"', $body, 'Página não pode ser renderizada para usuário errado.');
+        $this->assertStringNotContainsString('"error":true', $body, 'Rota de página não pode responder errorJson cru (deve renderizar o erro do tema).');
     }
 
     function testDesignatedCorrectorCanViewRegistrationForm(): void
@@ -615,5 +634,123 @@ class AppealCorrectorEnvironmentTest extends TestCase
             $registration->canUser('viewPrivateData', $outsider),
             'Corretor designado deve ver os campos privados do formulário.'
         );
+    }
+
+    // ============================================================ //
+    // R06 (#133 rework, 2026-11-19) — CA-20: visão dual do ambiente
+    // (gestor com @control lê; escrita segue exclusiva do corretor)
+    // ============================================================ //
+
+    /**
+     * Contrato do acesso dual: gestor com @control VÊ (readOnly), corretor
+     * designado VÊ e ESCREVE, usuário sem @control/designação não vê.
+     */
+    function testDualViewWriteContract(): void
+    {
+        $scenario = $this->createScenario();
+        $builder = new CorrectorEnvironment();
+        $review = $scenario['review'];
+
+        $this->login($scenario['corrector']);
+        $this->assertTrue($builder->canView($review), 'Corretor designado pode visualizar.');
+        $this->assertTrue($builder->canWrite($review), 'Corretor designado em janela válida pode escrever.');
+
+        $this->login($scenario['manager']);
+        $this->assertTrue($builder->canView($review), 'Gestor com @control na fase principal pode visualizar (CA-20).');
+        $this->assertFalse($builder->canWrite($review), 'Gestor sem designação NÃO pode escrever — escrita é exclusiva do corretor.');
+        $builder->assertAssignmentAccessible($review); // guard da página não lança para gestor
+
+        $this->login($scenario['outsider']);
+        $this->assertFalse($builder->canView($review), 'Usuário sem designação e sem @control não pode visualizar.');
+        $this->assertFalse($builder->canWrite($review));
+    }
+
+    /**
+     * Gestor com @control abre o payload do ambiente em modo somente
+     * leitura (mesma designação ativa que o corretor edita).
+     */
+    function testManagerWithControlViewsEnvironmentReadOnly(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['manager']);
+
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+        $this->assertEquals($scenario['review']->id, $payload['assignmentId']);
+        $this->assertTrue($payload['readOnly'], 'Gestor sem designação recebe readOnly=true.');
+        $this->assertArrayHasKey('visibleForm', $payload);
+
+        $request = $this->requestFactory->GET(
+            'appealCorrector',
+            'environment',
+            [$scenario['review']->id],
+            ajax: true
+        );
+
+        $app = App::i();
+        $app->reset();
+        $app->run($request, false);
+
+        $this->assertEquals(200, $app->response->getStatusCode(), 'Gestor com @control acessa o endpoint do ambiente.');
+        $body = json_decode((string) $app->response->getBody(), true);
+        $this->assertTrue($body['readOnly'], 'Payload do ambiente para gestor carrega readOnly=true.');
+    }
+
+    /**
+     * Designação ENVIADA permanece visível para o gestor (acompanhamento),
+     * em somente leitura — o mesmo histórico que o corretor vê.
+     */
+    function testManagerViewsSentAssignmentReadOnly(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->status = RegistrationAppealReview::STATUS_SENT;
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['manager']);
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertEquals('sent', $payload['status']);
+        $this->assertTrue($payload['readOnly']);
+    }
+
+    /**
+     * Corretor fora da janela de prazo continua VENDO o ambiente (leitura),
+     * sem escrita — coerente com "designações encerradas permanecem
+     * visíveis para corretor (histórico) e gestor".
+     */
+    function testCorrectorOutOfWindowViewsReadOnly(): void
+    {
+        $scenario = $this->createScenario();
+        $app = App::i();
+        $app->disableAccessControl();
+        $scenario['review']->startsAt = new DateTime('-2 days');
+        $scenario['review']->endsAt = new DateTime('-1 day');
+        $scenario['review']->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+        $payload = (new CorrectorEnvironment())->build($scenario['review']);
+
+        $this->assertTrue($payload['readOnly'], 'Corretor fora da janela visualiza apenas como leitura.');
+    }
+
+    /**
+     * A escrita permanece exclusiva do corretor designado: o envio
+     * (POST applyAppealCorrection) por gestor sem designação é rejeitado
+     * pelo guard do Service (intocado por esta mudança).
+     */
+    function testManagerCannotSubmitCorrection(): void
+    {
+        $scenario = $this->createScenario();
+        $this->login($scenario['manager']);
+
+        $request = $this->requestFactory->POST('registrationevaluation', 'applyAppealCorrection', [$scenario['slotA']->id], [
+            'evaluationData' => ['c-1' => 9, 'c-2' => 9, 'obs' => 'gestor'],
+            'draft' => false,
+        ]);
+
+        $this->assertStatus403($request, 'Gestor sem designação não pode enviar correção (escrita é do corretor).');
     }
 }

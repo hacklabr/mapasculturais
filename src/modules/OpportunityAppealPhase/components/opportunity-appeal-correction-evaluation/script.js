@@ -29,6 +29,17 @@ app.component('opportunity-appeal-correction-evaluation', {
     },
 
     computed: {
+        /**
+         * R06 (#133 rework — CA-20): visualização somente leitura do gestor.
+         * O payload do ambiente carrega readOnly=true quando o visualizador
+         * não é o corretor designado em janela válida (gestor com @control,
+         * corretor fora do prazo ou designação enviada) — trava os mesmos
+         * controles do estado ENVIADA.
+         */
+        isReadOnlyView() {
+            return this.environment?.readOnly === true;
+        },
+
         isLocked() {
             if (this.submitted) {
                 return true;
@@ -36,6 +47,10 @@ app.component('opportunity-appeal-correction-evaluation', {
 
             if (!this.environment) {
                 return false;
+            }
+
+            if (this.isReadOnlyView) {
+                return true;
             }
 
             if (this.environment.status === 'sent') {

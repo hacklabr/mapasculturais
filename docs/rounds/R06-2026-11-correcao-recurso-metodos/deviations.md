@@ -1,6 +1,6 @@
 # R06 — Registro de desvios (declarado vs. implementado)
 
-> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18). Fonte da entrada 7: rework da tarefa #134 após o teste manual do PR #137 (2026-11-18/19 — substitui a UX de seleção em linhas do commit `cc80536820`).
+> **Registro da rodada (record).** Desvios da implementação em relação ao planejado no `design.md`, na ordem em que ocorreram. Cada entrada: planejado → implementado → razão → decisão → documento de referência atualizado. Fonte das entradas 1–3: tarefa #131, commit `d3bfc6bef9` (2026-11-18). Fonte das entradas 4–6: tarefa #133, commit `19285ee424` (2026-11-18). Fonte da entrada 7: rework da tarefa #134 após o teste manual do PR #137 (2026-11-18/19 — substitui a UX de seleção em linhas do commit `cc80536820`). Fonte da entrada 8: rework da tarefa #133 após o teste manual do PR #137 (2026-11-19 — visão dual do ambiente de correção).
 
 ---
 
@@ -65,3 +65,13 @@
 - **Razão:** a coluna de seleção injetada fora da estrutura de `<thead>` do `entity-table` **quebrava o layout da tabela** — o cabeçalho era renderizado duas vezes (cabeçalho fake + `thead`, ambos com a célula de seleção) com uma célula solta ao final (evidência da árvore de acessibilidade da página `/lista-de-inscricoes/74/` no teste manual do time, 2026-11-18). O modal também dá contexto na escolha (corretor/prazo/status por designação), que a linha da tabela não dava.
 - **Decisão:** @israelmelo no teste do PR #137.
 - **Documento de referência atualizado:** design.md §3 (nota as-built) + PRD CA-21 (e jornadas J3.3).
+
+## #133 (rework) — Visão do gestor no ambiente de correção (CA-20)
+
+### 8. Guard da página do corretor: visão dual em vez de corretor-only
+
+- **Planejado (design.md §6.2):** guard na página `GET /appealCorrector/correction/{id}` "respondendo 403/redirect para quem não é o corretor designado **nem gestor `@control`**" — o texto já previa o dual; a implementação do commit `19285ee424` saiu **corretor-only** (reuso direto de `assertCanAccess`: ativa + titularidade + janela), bloqueando o gestor que o CA-20 manda deixar abrir, e convertia o `PermissionDenied` em `errorJson` 403 — **JSON cru em rota de página**.
+- **Implementado:** visão dual em `CorrectorEnvironment` — `canView()` = corretor designado (qualquer status) OU `@control` na fase principal da designação; `canWrite()` = regra de escrita anterior (ativa + titularidade + janela); `assertViewable()`/`assertAssignmentAccessible()` guardam a **visualização** (página + payload do ambiente); o payload carrega **`readOnly`** (`!canWrite`) consumido pelo `opportunity-appeal-correction-evaluation` (inputs travados, ações de envio ocultas, aviso "Visualização somente leitura — apenas o corretor designado pode enviar correções"). Denial na página **propaga** `PermissionDenied` (RoutesManager renderiza o erro 403 do tema em HTML); `errorJson` permanece apenas no endpoint AJAX `environment`. Escrita intacta: `Service::applyCorrection` revalida corretor/janela (:35-49) — não alterado.
+- **Razão:** CA-20 pede que o gestor autorizado **abra o ambiente** das designações existentes; o guard corretor-only bloqueava demais (admin logado recebia 403 — feedback do teste manual do PR #137, 2026-11-19) e a resposta JSON cru em rota de página violava o padrão do tema (erro renderizado). A visão não concede escrita nem amplia dados: o gestor já tem `@control` sobre a inscrição/fase.
+- **Decisão:** @israelmelo no teste do PR #137.
+- **Documento de referência atualizado:** design.md §6 (nota as-built do rework) + PRD CA-20.
