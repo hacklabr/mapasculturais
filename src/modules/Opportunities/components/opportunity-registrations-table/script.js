@@ -125,9 +125,12 @@ app.component('opportunity-registrations-table', {
         const appeal_correction_enabled = appeal_context != null;
 
         /*
-            R06 (#134) — CA-21: botão "Autoaplicar resultado" + modal de
-            seleção em lote (override 2026-11-18, teste manual do PR #137:
-            a coluna de seleção inline quebrava o layout da tabela).
+            R06 (#134) — CA-21: botão "Autoaplicar nas designações de
+            correção" + modal de seleção em lote (override 2026-11-18, teste
+            manual do PR #137: a coluna de seleção inline quebrava o layout
+            da tabela; rótulo ajustado no QA de 2026-11-23 para deixar claro
+            que o lote MARCA a autoaplicação — o resultado aplica no envio
+            da correção).
             Somente no contexto da fase de recurso com método da fase
             PRINCIPAL não-técnico (contorno D2: técnica mantém classificação
             manual). O método vem do init desta tabela (appealScoreMethod,

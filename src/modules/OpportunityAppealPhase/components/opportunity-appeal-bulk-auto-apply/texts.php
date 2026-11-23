@@ -11,11 +11,14 @@ return [
     'empty designations' => i::__('Não há designações de correção elegíveis à autoaplicação nesta fase de recurso (apenas designações ativas e oficiais são elegíveis).'),
     'select all' => i::__('Selecionar todos'),
     'selected count' => i::__('%s selecionada(s)'),
-    'select at least one' => i::__('Selecione ao menos uma designação para aplicar o lote.'),
+    'select at least one' => i::__('Selecione ao menos uma designação para marcar a autoaplicação.'),
     'current result' => i::__('Resultado atual'),
     'already auto apply' => i::__('Autoaplicação já marcada'),
-    'apply selected' => i::__('Autoaplicar nas selecionadas'),
-    'applying' => i::__('Aplicando...'),
+    // QA 2026-11-23 (#134): família "marcar" — o lote só marca; a aplicação
+    // do resultado acontece no envio da correção pelo corretor. O template
+    // já acrescenta o contador "(N)" ao lado do rótulo.
+    'apply selected' => i::__('Marcar autoaplicação nas selecionadas'),
+    'applying' => i::__('Marcando...'),
     'report summary' => i::__('Autoaplicação marcada em %s designação(ões).'),
     'skipped title' => i::__('Ignoradas'),
     'skipped hint' => i::__('As designações ignoradas não foram alteradas. Elas voltam a ficar elegíveis conforme o motivo informado (por exemplo, após reabertura de correção enviada).'),

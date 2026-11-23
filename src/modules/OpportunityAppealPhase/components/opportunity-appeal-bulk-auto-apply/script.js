@@ -9,8 +9,10 @@
  * Override do teste manual do PR #137 (2026-11-18): a seleção em lote foi
  * REMOVIDA da tabela de inscrições da fase de recurso (a coluna de seleção
  * do entity-table quebrava o layout — cabeçalho duplicado) e vive neste
- * modal, aberto pelo botão "Autoaplicar resultado" na área de ações da
- * tabela (ao lado de "Exportar planilha"). O modal dá contexto na escolha:
+ * modal, aberto pelo botão "Autoaplicar nas designações de correção" na
+ * área de ações da tabela (ao lado de "Exportar planilha"; rótulo ajustado
+ * no QA 2026-11-23 — o lote MARCA a autoaplicação, que aplica o resultado
+ * no envio da correção). O modal dá contexto na escolha:
  * inscrição + agente + resultado atual (rótulo do método) + corretor +
  * prazo + status por designação.
  *
