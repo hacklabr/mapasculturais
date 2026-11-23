@@ -108,13 +108,23 @@ app.component('opportunity-appeal-bulk-auto-apply', {
                 : null;
         },
 
+        /**
+         * QA 2026-11-23 (#134): o lote só MARCA — designações já marcadas
+         * (autoApply=true) ficam fora da seleção (linha visível, informativa,
+         * checkbox desabilitado). Desmarcar é pelo modal de designação
+         * (PATCH, enquanto a correção não foi enviada).
+         */
+        selectableDesignations() {
+            return this.designations.filter(designation => !designation.autoApply);
+        },
+
         selectedDesignations() {
-            return this.designations.filter(designation => designation.checked);
+            return this.designations.filter(designation => designation.checked && !designation.autoApply);
         },
 
         allSelected() {
-            return this.designations.length > 0
-                && this.designations.every(designation => designation.checked);
+            return this.selectableDesignations.length > 0
+                && this.selectableDesignations.every(designation => designation.checked);
         },
 
         canApply() {
@@ -357,12 +367,17 @@ app.component('opportunity-appeal-bulk-auto-apply', {
         /**
          * "Selecionar todos" no padrão da casa (fields-visible-evaluators,
          * seletor de escopo do modal de designação): um checkbox de estado
-         * sincronizado com a lista completa.
+         * sincronizado com a lista completa. QA 2026-11-23: ignora as
+         * designações já marcadas (o lote só marca quem ainda não tem o flag).
          */
         toggleSelectAll() {
             const select = !this.allSelected;
 
             for (const designation of this.designations) {
+                if (designation.autoApply) {
+                    continue;
+                }
+
                 designation.checked = select;
             }
         },

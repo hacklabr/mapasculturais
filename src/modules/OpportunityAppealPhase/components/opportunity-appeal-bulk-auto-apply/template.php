@@ -86,6 +86,7 @@ $this->import('
                         <input
                             type="checkbox"
                             :id="'bulk-apply-' + designation.id"
+                            :disabled="designation.autoApply"
                             v-model="designation.checked">
 
                         <div class="opportunity-appeal-bulk-auto-apply__item-info">
@@ -114,7 +115,7 @@ $this->import('
                                     {{ statusLabel(designation) }}
                                 </span>
 
-                                <?php /* R06 (#134) — CA-21: designação já marcada entra no lote como idempotente */ ?>
+                                <?php /* QA 2026-11-23: já-marcada fica informativa (badge), fora da seleção — desmarcar é pelo modal de designação, enquanto a correção não foi enviada */ ?>
                                 <span v-if="designation.autoApply" class="opportunity-appeal-bulk-auto-apply__item-tag warning__background">
                                     {{ text('already auto apply') }}
                                 </span>
@@ -123,7 +124,12 @@ $this->import('
                     </label>
                 </div>
 
-                <div v-if="!selectedDesignations.length" class="opportunity-appeal-bulk-auto-apply__hint danger__color">
+                <?php /* QA 2026-11-23: todas já marcadas — nada selecionável neste modal; desmarcar é pelo modal de designação (pré-envio) */ ?>
+                <mc-alert v-if="designations.length && !selectableDesignations.length" type="helper">
+                    {{ text('all already marked') }}
+                </mc-alert>
+
+                <div v-if="!selectedDesignations.length && selectableDesignations.length" class="opportunity-appeal-bulk-auto-apply__hint danger__color">
                     {{ text('select at least one') }}
                 </div>
             </template>
