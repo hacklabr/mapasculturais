@@ -131,6 +131,21 @@ app.component('opportunity-appeal-bulk-auto-apply', {
         reportSummary() {
             return this.text('report summary').replace('%s', this.report?.marked ?? 0);
         },
+
+        /**
+         * Comissão de Recursos da fase principal (nomes de corretor).
+         * Precisa ser computed: evaluatorName usa `this.committee` como
+         * array — se ficar em methods, `(this.committee || []).find`
+         * recebe a function e quebra o loadData do modal (QA 2026-11-23).
+         */
+        committee() {
+            const committees = this.config.committees || {};
+            const list = this.mainPhaseId != null
+                ? committees[this.mainPhaseId] ?? []
+                : [];
+
+            return Array.isArray(list) ? list : [];
+        },
     },
 
     mounted() {
@@ -290,15 +305,8 @@ app.component('opportunity-appeal-bulk-auto-apply', {
                 return name;
             }
 
-            const committee_member = (this.committee || []).find(member => member.userId === user_id);
+            const committee_member = this.committee.find(member => member.userId === user_id);
             return committee_member?.name || null;
-        },
-
-        committee() {
-            const committees = this.config.committees || {};
-            return this.mainPhaseId != null
-                ? committees[this.mainPhaseId] ?? null
-                : null;
         },
 
         statusLabel(designation) {
