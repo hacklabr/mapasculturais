@@ -295,7 +295,12 @@ class Service
      * evaluationData e o cálculo do resultado:
      * - technical: critérios (ids) → pontuação ponderada;
      * - documentary: fieldName/fileGroupName → {evaluation, obs} por campo;
-     * - simple: resultado global (status) + obs.
+     * - simple: resultado global (status) + obs;
+     * - qualification: critério → array ['valid'|'invalid'|'not-applicable',
+     *   motivos...] + `{criterio}_reason` + obs por seção (`{sectionId}`) —
+     *   o resultado ('valid'/'invalid') é calculado pelo próprio método em
+     *   setEvaluationData (getEvaluationResult lê nonEliminatory/
+     *   maxNonEliminatory do EMC).
      */
     private function assertEvaluationMethodResolvable(RegistrationEvaluation $slot): void
     {
@@ -312,7 +317,11 @@ class Service
      *
      * Genérico por método (F7): as chaves são as do evaluationData — critérios
      * (technical), fieldName/fileGroupName (documentary; o obs por campo viaja
-     * DENTRO do objeto do campo) ou status/obs (simple).
+     * DENTRO do objeto do campo) ou status/obs (simple). Habilitação
+     * documental (qualification) libera junto ao critério as chaves
+     * companheiras `{criterio}_reason` (motivo do "Outros") e `{sectionId}`
+     * (observações/parecer da seção) — mesmo shape do
+     * qualification-evaluation-form.
      */
     private function mergeWithinReleasedScope(RegistrationEvaluation $slot, RegistrationAppealReview $review, array $incoming): array
     {
@@ -323,12 +332,14 @@ class Service
             return array_merge($current, $incoming);
         }
 
+        $allowed = array_merge($scope, $this->getQualificationCompanionKeys($slot, $scope));
+
         $out_of_scope = [];
         foreach ($incoming as $key => $value) {
             if ($key === 'obs' || $key === 'viability') {
                 continue;
             }
-            if (!in_array((string) $key, $scope, true)) {
+            if (!in_array((string) $key, $allowed, true)) {
                 $current_value = $current[$key] ?? null;
                 if (json_encode($value) !== json_encode($current_value)) {
                     $out_of_scope[] = $key;
@@ -343,12 +354,48 @@ class Service
         }
 
         foreach ($incoming as $key => $value) {
-            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope, true)) {
+            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $allowed, true)) {
                 $current[$key] = $value;
             }
         }
 
         return $current;
+    }
+
+    /**
+     * Chaves companheiras da habilitação documental liberadas junto ao
+     * critério em escopo: `{criterio}_reason` e `{sectionId}` (seções do EMC
+     * que contêm critérios liberados). Vazio para os demais métodos — o
+     * escopo de técnico/documental/simples não é ampliado.
+     *
+     * @param string[] $scope
+     * @return string[]
+     */
+    private function getQualificationCompanionKeys(RegistrationEvaluation $slot, array $scope): array
+    {
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        if (!$emc || (string) $emc->type->id !== 'qualification') {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($scope as $id) {
+            $keys[] = $id . '_reason';
+        }
+
+        $criteria = $emc->criteria ?? [];
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (isset($criterion->id, $criterion->sid) && in_array((string) $criterion->id, $scope, true)) {
+                $keys[] = (string) $criterion->sid;
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**

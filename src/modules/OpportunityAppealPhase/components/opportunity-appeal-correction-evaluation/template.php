@@ -551,6 +551,100 @@ $this->import('
             </template>
         </mc-card>
 
+        <?php /* Habilitação documental (qualification): espelha o qualification-evaluation-form — rádio Atende/Não atende/Não se aplica por critério, motivos quando "Não atende" e obs por seção + global */ ?>
+        <mc-card v-else-if="isQualification">
+            <template #title>
+                <h3><?= i::__('Critérios liberados para correção') ?></h3>
+            </template>
+            <template #content>
+                <div v-for="section in qualificationGroups" :key="section.id || 'qualification-group'" class="opportunity-appeal-correction-evaluation__qualification-section">
+                    <h4 v-if="section.name" class="bold">{{ section.name }}</h4>
+
+                    <mc-alert v-if="section.maxNonEliminatory" type="helper">
+                        {{ text('qualification-non-eliminatory-notice', {count: section.numberMaxNonEliminatory}) }}
+                    </mc-alert>
+
+                    <div class="opportunity-appeal-correction-evaluation__list">
+                        <div class="opportunity-appeal-correction-evaluation__item" v-for="criterion in criteriaOfSection(section)" :key="criterion.id">
+                            <div class="opportunity-appeal-correction-evaluation__item-header">
+                                <h4 class="bold">{{ criterion.title }}</h4>
+                                <div class="opportunity-appeal-correction-evaluation__item-meta">
+                                    <span v-if="criterion.nonEliminatory">{{ text('qualification-non-eliminatory') }}</span>
+                                    <span v-else><strong>{{ text('qualification-eliminatory') }}</strong></span>
+                                </div>
+                            </div>
+
+                            <p v-if="criterion.description" class="opportunity-appeal-correction-evaluation__criterion-description">{{ criterion.description }}</p>
+
+                            <div class="opportunity-appeal-correction-evaluation__compare">
+                                <div class="opportunity-appeal-correction-evaluation__original">
+                                    <span class="opportunity-appeal-correction-evaluation__label"><?= i::__('Avaliação original') ?></span>
+                                    <span class="opportunity-appeal-correction-evaluation__value">{{ originalQualificationLabel(criterion) }}</span>
+                                    <small v-if="originalQualificationReasons(criterion)">{{ originalQualificationReasons(criterion) }}</small>
+                                </div>
+                                <div class="field">
+                                    <label><?= i::__('Avaliação corrigida') ?></label>
+                                    <div class="opportunity-appeal-correction-evaluation__field-options">
+                                        <label class="field__checkbox">
+                                            <input type="radio" value="valid" :name="'corrected-qualification-' + criterion.id" :checked="formData.data[criterion.id]?.includes('valid')" :disabled="isLocked" @change="setQualificationEvaluation(criterion, 'valid')">
+                                            <span>{{ text('qualification-meets') }}</span>
+                                        </label>
+                                        <label class="field__checkbox">
+                                            <input type="radio" value="invalid" :name="'corrected-qualification-' + criterion.id" :checked="formData.data[criterion.id]?.includes('invalid')" :disabled="isLocked" @change="setQualificationEvaluation(criterion, 'invalid')">
+                                            <span>{{ text('qualification-not-meets') }}</span>
+                                        </label>
+                                        <label v-if="criterion.notApplyOption" class="field__checkbox">
+                                            <input type="radio" value="not-applicable" :name="'corrected-qualification-' + criterion.id" :checked="formData.data[criterion.id]?.includes('not-applicable')" :disabled="isLocked" @change="setQualificationEvaluation(criterion, 'not-applicable')">
+                                            <span>{{ text('qualification-not-applicable') }}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="formData.data[criterion.id]?.includes('invalid') && (criterion.options?.length || criterion.otherReasonsOption)" class="field">
+                                <h5 class="semibold">{{ text('qualification-reasons-title') }}</h5>
+                                <div class="opportunity-appeal-correction-evaluation__field-options">
+                                    <label class="field__checkbox" v-for="option in criterion.options" :key="option">
+                                        <input type="checkbox" :value="option" :name="'corrected-qualification-reason-' + criterion.id" :checked="formData.data[criterion.id]?.includes(option)" :disabled="isLocked" @change="toggleQualificationOption(criterion, option)">
+                                        <span>{{ option }}</span>
+                                    </label>
+                                    <label v-if="criterion.otherReasonsOption" class="field__checkbox">
+                                        <input type="checkbox" value="others" :name="'corrected-qualification-others-' + criterion.id" :checked="formData.data[criterion.id]?.includes('others')" :disabled="isLocked" @change="toggleQualificationOthers(criterion, $event)">
+                                        <span>{{ text('qualification-others') }}</span>
+                                    </label>
+                                </div>
+                                <textarea
+                                    v-if="formData.data[criterion.id]?.includes('others')"
+                                    v-model="formData.data[criterion.id + '_reason']"
+                                    :disabled="isLocked"
+                                    :placeholder="text('qualification-others-placeholder')"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="section.id" class="field">
+                        <label :for="'corrected-qualification-section-obs-' + section.id">{{ text('qualification-section-obs') }}</label>
+                        <textarea
+                            :id="'corrected-qualification-section-obs-' + section.id"
+                            :name="'corrected-qualification-section-obs-' + section.id"
+                            :disabled="isLocked"
+                            v-model="formData.data[section.id]"
+                            :placeholder="text('qualification-section-obs-placeholder')"></textarea>
+                    </div>
+                </div>
+
+                <div class="field opportunity-appeal-correction-evaluation__opinion">
+                    <label for="corrected-qualification-obs">{{ text('qualification-final-obs') }}</label>
+                    <textarea
+                        id="corrected-qualification-obs"
+                        name="corrected-qualification-obs"
+                        :disabled="isLocked"
+                        rows="5"
+                        v-model="formData.data.obs"></textarea>
+                </div>
+            </template>
+        </mc-card>
+
         <?php /* Aviso de bloqueio pós-envio: somente quando NÃO é a visão somente-leitura do gestor (que já tem o aviso próprio no topo) */ ?>
         <mc-alert v-if="isLocked && !isReadOnlyView" type="warning"><?= i::__('Correção enviada, edição bloqueada.') ?></mc-alert>
 

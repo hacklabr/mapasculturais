@@ -63,7 +63,7 @@ class AppealCorrectorCycleTest extends TestCase
 
         $this->login($admin);
 
-        $this->opportunityBuilder
+        $evaluation_phase = $this->opportunityBuilder
             ->reset(owner: $admin->profile, owner_entity: $admin->profile)
             ->fillRequiredProperties()
             ->firstPhase()
@@ -73,7 +73,18 @@ class AppealCorrectorCycleTest extends TestCase
             ->addEvaluationPhase($method)
                 ->fillRequiredProperties()
                 ->setEvaluationPeriod(new ConcurrentEndingAfter)
-                ->save()
+                ->save();
+
+        if ($method === EvaluationMethods::qualification) {
+            $evaluation_phase = $evaluation_phase
+                ->config()
+                    ->addSection('sec-1', 'Seção 1')
+                    ->addCriterion('cri-1', 'sec-1', 'Critério 1')
+                    ->done()
+                ->save();
+        }
+
+        $evaluation_phase
                 ->addValuer('Comissão', 'Avaliador do Slot', $slot_owner->profile)
                     ->done()
                 ->done()
@@ -127,6 +138,10 @@ class AppealCorrectorCycleTest extends TestCase
                 $data[$field->getFieldName()] = ['evaluation' => 'valid', 'obs' => ''];
             }
             $slot->setEvaluationData((object) $data);
+        } elseif ($method === EvaluationMethods::qualification) {
+            // Shape do qualification-evaluation-form: array por critério
+            // (resultado + motivos), obs por seção (`{sectionId}`) e obs global.
+            $slot->setEvaluationData((object) ['cri-1' => ['invalid', 'Nao atende'], 'obs' => 'original']);
         } else {
             $slot->setEvaluationData((object) ['status' => '3', 'obs' => 'original']);
         }
@@ -373,6 +388,79 @@ class AppealCorrectorCycleTest extends TestCase
 
         $slot = App::i()->repo('RegistrationEvaluation')->find($scenario['slot']->id);
         $this->assertSame('invalid', ((array) $slot->getEvaluationData())[$field_a_name]['evaluation'], 'Campo liberado corrigido in-place.');
+    }
+
+    /**
+     * Rework (#134, QA 2026-11-23): habilitação documental — ciclo completo.
+     * Designação → corretor acessa → ambiente expõe method=qualification +
+     * metadados do critério (name como título, options) + seções liberadas →
+     * rascunho → envio → slot atualizado in-place no shape do método (array
+     * por critério + obs por seção) + resultado recalculado ('valid') +
+     * designação SENT + snapshot original.
+     */
+    function testQualificationCorrectorFullCycle(): void
+    {
+        $scenario = $this->createScenario(EvaluationMethods::qualification);
+
+        $created = $this->designate($scenario);
+        $this->assertEquals(200, $created['status'], 'Designação em habilitação documental: ' . json_encode($created['json']));
+        $review_id = (int) $created['json']['id'];
+
+        $corrector = $scenario['committeeUser'];
+        $this->login($corrector);
+        $this->assertTrue($scenario['slot']->canUser('modify', $corrector), 'Corretor designado deve modificar o slot de habilitação (hook do módulo, F7).');
+
+        // Ambiente: método + metadados que o formulário de habilitação consome.
+        $environment = $this->environment($review_id, $corrector);
+        $this->assertEquals(200, $environment['status'], 'Ambiente do corretor em habilitação: ' . json_encode($environment['json']));
+        $this->assertSame('qualification', $environment['json']['method']);
+
+        $criteria = $environment['json']['criteria'] ?? [];
+        $this->assertCount(1, $criteria);
+        $this->assertSame('cri-1', $criteria[0]['id']);
+        $this->assertSame('Critério 1', $criteria[0]['title'], 'Habilitação usa o `name` do critério como título.');
+        $this->assertSame(['Nao atende'], $criteria[0]['options'], 'Metadado de motivos (options) do critério exposto.');
+        $this->assertSame('sec-1', $criteria[0]['sectionId']);
+
+        $sections = $environment['json']['sections'] ?? [];
+        $this->assertCount(1, $sections, 'Ambiente de habilitação expõe as seções com critérios liberados.');
+        $this->assertSame('sec-1', $sections[0]['id']);
+        $this->assertSame('Seção 1', $sections[0]['name']);
+
+        $this->assertSame(['invalid', 'Nao atende'], $environment['json']['originalEvaluation']['cri-1'], 'Avaliação original no shape do método (array por critério).');
+
+        // Rascunho: critério corrigido para valid + obs da seção + obs global.
+        $data = [
+            'cri-1' => ['valid'],
+            'sec-1' => 'Documentação conferida no recurso',
+            'obs' => 'recurso deferido: habilitado',
+        ];
+
+        $draft = $this->applyCorrection($scenario['slot'], $data, draft: true);
+        $this->assertEquals(200, $draft['status'], 'Rascunho em habilitação: ' . json_encode($draft['json']));
+
+        $review = App::i()->repo(RegistrationAppealReview::class)->find($review_id);
+        $this->assertSame(RegistrationAppealReview::STATUS_DRAFT, (int) $review->status);
+
+        // Envio definitivo.
+        $sent = $this->applyCorrection($scenario['slot'], $data, draft: false);
+        $this->assertEquals(200, $sent['status'], 'Envio em habilitação: ' . json_encode($sent['json']));
+
+        $slot = App::i()->repo('RegistrationEvaluation')->find($scenario['slot']->id);
+        $slot_data = (array) $slot->getEvaluationData();
+        $this->assertSame(['valid'], (array) $slot_data['cri-1'], 'Slot de habilitação atualizado in-place (array por critério).');
+        $this->assertSame('Documentação conferida no recurso', $slot_data['sec-1'], 'Observação da seção persistida no evaluationData.');
+        $this->assertSame('recurso deferido: habilitado', $slot_data['obs']);
+        $this->assertSame('valid', $slot->result, 'Resultado recalculado pelo getEvaluationResult do método qualification.');
+        $this->assertSame((string) RegistrationEvaluation::STATUS_SENT, (string) $slot->status);
+
+        $review = App::i()->repo(RegistrationAppealReview::class)->find($review_id);
+        $this->assertSame(RegistrationAppealReview::STATUS_SENT, (int) $review->status);
+        $this->assertNotNull($review->sentTimestamp);
+        $this->assertEquals(['invalid', 'Nao atende'], (array) ((array) $review->originalValue)['cri-1'], 'Snapshot do valor original preservado.');
+
+        $registration = App::i()->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame('valid', (string) $registration->refreshed()->consolidatedResult, 'Consolidação recalculada para valid.');
     }
 
     /**

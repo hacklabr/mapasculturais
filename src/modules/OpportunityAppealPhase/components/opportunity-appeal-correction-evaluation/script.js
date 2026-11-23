@@ -93,6 +93,25 @@ app.component('opportunity-appeal-correction-evaluation', {
             return this.method === 'simple';
         },
 
+        isQualification() {
+            return this.method === 'qualification';
+        },
+
+        /**
+         * Seções da habilitação documental que contêm critérios liberados
+         * (payload `sections` do ambiente). Sem seções, cai num grupo único
+         * com todos os critérios liberados (designações/EMCs legados).
+         */
+        qualificationGroups() {
+            const sections = this.environment?.sections || [];
+
+            if (sections.length) {
+                return sections;
+            }
+
+            return [{ id: null, name: '', maxNonEliminatory: false, numberMaxNonEliminatory: 0 }];
+        },
+
         fieldsList() {
             return this.environment?.fields || [];
         },
@@ -262,6 +281,11 @@ app.component('opportunity-appeal-correction-evaluation', {
         /**
          * F7: garante a forma do formData por método — documental precisa de
          * {evaluation, obs} por campo liberado; técnico/simples precisam de obs.
+         * Habilitação documental (qualification) espelha o
+         * qualification-evaluation-form: por critério liberado um ARRAY
+         * (['valid'] | ['invalid', motivo...] | ['not-applicable']) +
+         * `{criterio}_reason` (texto do "Outros") + obs por seção
+         * (`{sectionId}`) + obs global.
          */
         initFormDataByMethod() {
             if (this.isDocumentary) {
@@ -277,7 +301,156 @@ app.component('opportunity-appeal-correction-evaluation', {
             } else if (this.isSimple || this.isTechnical) {
                 this.formData.data.status = this.formData.data.status ?? '';
                 this.formData.data.obs = this.formData.data.obs ?? '';
+            } else if (this.isQualification) {
+                for (const criterion of this.criteriaList) {
+                    const current = this.formData.data[criterion.id];
+
+                    this.formData.data[criterion.id] = Array.isArray(current)
+                        ? current
+                        : this.parseQualificationValue(current);
+
+                    const reason_key = criterion.id + '_reason';
+                    const reason = this.formData.data[reason_key];
+                    this.formData.data[reason_key] = (reason === null || reason === undefined) ? '' : String(reason);
+                }
+
+                for (const section of this.qualificationGroups) {
+                    if (!section.id) {
+                        continue;
+                    }
+
+                    const section_obs = this.formData.data[section.id];
+                    this.formData.data[section.id] = (section_obs === null || section_obs === undefined || Array.isArray(section_obs)) ? '' : String(section_obs);
+                }
+
+                this.formData.data.obs = this.formData.data.obs ?? '';
             }
+        },
+
+        /**
+         * Converte valor legado (escalar, avaliações anteriores à 7.6) para o
+         * array esperado pelo método — mesma regra do parseLegacyResult do
+         * EvaluationMethodQualification.
+         */
+        parseQualificationValue(value) {
+            if (value === 'valid' || value === 'invalid' || value === 'not-applicable') {
+                return [value];
+            }
+
+            return [];
+        },
+
+        criteriaOfSection(section) {
+            if (!section.id) {
+                return this.criteriaList;
+            }
+
+            return this.criteriaList.filter((criterion) => criterion.sectionId === section.id);
+        },
+
+        /**
+         * Habilitação documental: rádio Atende/Não atende/Não se aplica —
+         * espelha updateSectionStatus do qualification-evaluation-form (o
+         * valor do critério é sempre um array iniciado pelo resultado).
+         */
+        setQualificationEvaluation(criterion, value) {
+            if (this.isLocked) {
+                return;
+            }
+
+            this.formData.data[criterion.id] = [value];
+
+            if (value === 'invalid') {
+                this.formData.data[criterion.id + '_reason'] = this.formData.data[criterion.id + '_reason'] ?? '';
+            }
+        },
+
+        /**
+         * Habilitação documental: checkbox de motivo ("Recomendação para
+         * atender ao critério") — espelha updateOption do formulário
+         * canônico (marcar prefixa ['invalid', motivo]; desmarcar remove).
+         */
+        toggleQualificationOption(criterion, option) {
+            if (this.isLocked) {
+                return;
+            }
+
+            const selected = this.formData.data[criterion.id] || [];
+
+            if (selected.includes('others')) {
+                selected.splice(selected.indexOf('others'), 1);
+            }
+
+            if (!selected.includes(option)) {
+                this.formData.data[criterion.id] = ['invalid', option];
+            } else {
+                this.formData.data[criterion.id] = selected.filter((item) => item !== option);
+            }
+        },
+
+        /**
+         * Habilitação documental: "Outros" — espelha toggleOthersOption do
+         * formulário canônico (['invalid', 'others'] + `{id}_reason`).
+         */
+        toggleQualificationOthers(criterion, event) {
+            if (this.isLocked) {
+                return;
+            }
+
+            if (!this.formData.data[criterion.id]) {
+                this.formData.data[criterion.id] = [];
+            }
+
+            if (event.target.checked) {
+                this.formData.data[criterion.id] = ['invalid', 'others'];
+                this.formData.data[criterion.id + '_reason'] = '';
+            } else {
+                const index = this.formData.data[criterion.id].indexOf('others');
+                if (index > -1) {
+                    this.formData.data[criterion.id].splice(index, 1);
+                }
+                this.formData.data[criterion.id + '_reason'] = '';
+            }
+        },
+
+        qualificationValueOf(data, criterion) {
+            const value = data?.[criterion.id];
+
+            return Array.isArray(value) ? value : this.parseQualificationValue(value);
+        },
+
+        originalQualificationLabel(criterion) {
+            const value = this.qualificationValueOf(this.environment?.originalEvaluation, criterion);
+
+            if (value.includes('valid')) {
+                return this.text('qualification-meets');
+            }
+
+            if (value.includes('not-applicable')) {
+                return this.text('qualification-not-applicable');
+            }
+
+            if (value.includes('invalid')) {
+                return this.text('qualification-not-meets');
+            }
+
+            return this.text('qualification-not-evaluated');
+        },
+
+        /**
+         * Motivos registrados na avaliação original quando "Não atende":
+         * opções marcadas (exceto os tokens de resultado) + texto do "Outros".
+         */
+        originalQualificationReasons(criterion) {
+            const original = this.environment?.originalEvaluation || {};
+            const value = this.qualificationValueOf(original, criterion);
+            const reasons = value.filter((item) => !['valid', 'invalid', 'not-applicable', 'others'].includes(item));
+
+            if (value.includes('others') && original[criterion.id + '_reason']) {
+                reasons.push(String(original[criterion.id + '_reason']));
+            }
+
+            return reasons.join('; ');
         },
 
         originalNote(criterion) {

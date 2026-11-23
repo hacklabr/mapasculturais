@@ -42,15 +42,23 @@ class CorrectorEnvironment
         $slot = $review->originalEvaluation;
         $scope_ids = $this->getReleasedCriteriaIds($review);
 
-        // Após envio o slot já contém a nota corrigida; a original fica no snapshot da designação.
-        $original_data = $review->originalValue ?? $slot->getEvaluationData();
-        $original = $this->filterEvaluationData((array) $original_data, $scope_ids);
-        $draft = $review->correctedValue
-            ? $this->filterEvaluationData((array) $review->correctedValue, $scope_ids)
-            : null;
-
         $main_emc = $slot->registration->opportunity->evaluationMethodConfiguration;
         $method_id = $main_emc ? (string) $main_emc->type->id : '';
+
+        // Habilitação documental (qualification): o evaluationData tem chaves
+        // companheiras além dos ids de critério — `{criterio}_reason` (motivo
+        // do "Outros") e obs por seção (`{sectionId}`) — que precisam atravessar
+        // o filtro de escopo junto com o critério liberado.
+        $companion_keys = $method_id === 'qualification' && $scope_ids !== null
+            ? $this->getQualificationCompanionKeys($slot, $scope_ids)
+            : [];
+
+        // Após envio o slot já contém a nota corrigida; a original fica no snapshot da designação.
+        $original_data = $review->originalValue ?? $slot->getEvaluationData();
+        $original = $this->filterEvaluationData((array) $original_data, $scope_ids, $companion_keys);
+        $draft = $review->correctedValue
+            ? $this->filterEvaluationData((array) $review->correctedValue, $scope_ids, $companion_keys)
+            : null;
 
         $registration = $review->registration;
 
@@ -92,6 +100,11 @@ class CorrectorEnvironment
             $payload['fields'] = $this->buildDocumentaryFields($review, $scope_ids);
         } elseif ($method_id === 'simple') {
             $payload['statusOptions'] = $this->buildSimpleStatusOptions();
+        } elseif ($method_id === 'qualification') {
+            // Habilitação documental: seções do EMC que contêm critérios
+            // liberados (o formulário do corretor espelha o
+            // qualification-evaluation-form, agrupado por seção).
+            $payload['sections'] = $this->buildQualificationSectionsMetadata($slot, $scope_ids);
         }
 
         if ($this->shouldShowAppealOpinion($review)) {
@@ -326,18 +339,131 @@ class CorrectorEnvironment
 
             $sid = isset($criterion->sid) ? (string) $criterion->sid : null;
 
-            $out[] = [
+            $item = [
                 'id' => $id,
-                'title' => (string) ($criterion->title ?? $id),
+                // Técnico usa `title`; habilitação documental usa `name` (mesma
+                // fonte do qualification-evaluation-form).
+                'title' => (string) ($criterion->title ?? $criterion->name ?? $id),
                 'min' => (float) ($criterion->min ?? 0),
                 'max' => (float) ($criterion->max ?? 0),
                 'weight' => (float) ($criterion->weight ?? 1),
                 'sectionId' => $sid,
                 'sectionName' => $sid !== null ? ($section_names[$sid] ?? '') : null,
             ];
+
+            // Campos específicos da habilitação documental (presentes só
+            // quando definidos no EMC — técnico/documental não os têm, então
+            // o payload desses métodos permanece intacto).
+            if (isset($criterion->options) && is_array($criterion->options)) {
+                $item['options'] = array_values($criterion->options);
+            }
+            if (isset($criterion->notApplyOption)) {
+                $item['notApplyOption'] = $criterion->notApplyOption === true || $criterion->notApplyOption === 'true';
+            }
+            if (isset($criterion->otherReasonsOption)) {
+                $item['otherReasonsOption'] = $criterion->otherReasonsOption === true || $criterion->otherReasonsOption === 'true';
+            }
+            if (isset($criterion->nonEliminatory)) {
+                $item['nonEliminatory'] = $criterion->nonEliminatory === true || $criterion->nonEliminatory === 'true';
+            }
+            if (isset($criterion->description) && $criterion->description !== '') {
+                $item['description'] = (string) $criterion->description;
+            }
+
+            $out[] = $item;
         }
 
         return $out;
+    }
+
+    /**
+     * Seções do EMC da fase principal que contêm critérios liberados, com a
+     * configuração que o formulário de habilitação documental consome
+     * (maxNonEliminatory/numberMaxNonEliminatory — mesmos campos que
+     * EvaluationMethodQualification\Module::getEvaluationResult lê).
+     *
+     * @param string[]|null $scope_ids null = todas as seções com critérios
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildQualificationSectionsMetadata(RegistrationEvaluation $slot, ?array $scope_ids): array
+    {
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        if (!$emc) {
+            return [];
+        }
+
+        $sections = $emc->sections ?? [];
+        $criteria = $emc->criteria ?? [];
+
+        if (is_string($sections)) {
+            $sections = json_decode($sections);
+        }
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        $released_section_ids = [];
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (!isset($criterion->id, $criterion->sid)) {
+                continue;
+            }
+            if ($scope_ids !== null && !in_array((string) $criterion->id, $scope_ids, true)) {
+                continue;
+            }
+
+            $released_section_ids[(string) $criterion->sid] = true;
+        }
+
+        $out = [];
+        foreach ((array) $sections as $section) {
+            $section = (object) $section;
+            if (!isset($section->id) || !isset($released_section_ids[(string) $section->id])) {
+                continue;
+            }
+
+            $out[] = [
+                'id' => (string) $section->id,
+                'name' => (string) ($section->name ?? ''),
+                'maxNonEliminatory' => !empty($section->maxNonEliminatory),
+                'numberMaxNonEliminatory' => (int) ($section->numberMaxNonEliminatory ?? 0),
+                'requiredSectionObservation' => !empty($section->requiredSectionObservation),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Chaves companheiras da habilitação documental que atravessam o escopo
+     * junto com o critério liberado: `{criterio}_reason` (texto do "Outros")
+     * e `{sectionId}` (observações/parecer da seção, chaveado pelo id da
+     * seção no evaluationData — padrão do qualification-evaluation-form).
+     *
+     * @param string[] $scope_ids
+     * @return string[]
+     */
+    private function getQualificationCompanionKeys(RegistrationEvaluation $slot, array $scope_ids): array
+    {
+        $keys = [];
+        foreach ($scope_ids as $id) {
+            $keys[] = $id . '_reason';
+        }
+
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        $criteria = $emc ? ($emc->criteria ?? []) : [];
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (isset($criterion->id, $criterion->sid) && in_array((string) $criterion->id, $scope_ids, true)) {
+                $keys[] = (string) $criterion->sid;
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**
@@ -400,9 +526,11 @@ class CorrectorEnvironment
     /**
      * @param array<string, mixed> $data
      * @param string[]|null $scope_ids
+     * @param string[] $extra_allowed chaves companheiras liberadas junto ao
+     *   escopo (habilitação documental: `{criterio}_reason` e `{sectionId}`)
      * @return array<string, mixed>
      */
-    private function filterEvaluationData(array $data, ?array $scope_ids): array
+    private function filterEvaluationData(array $data, ?array $scope_ids, array $extra_allowed = []): array
     {
         if ($scope_ids === null) {
             return $data;
@@ -412,7 +540,7 @@ class CorrectorEnvironment
         // da correção e exequibilidade), alinhado a mergeWithinReleasedScope.
         $filtered = [];
         foreach ($data as $key => $value) {
-            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope_ids, true)) {
+            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope_ids, true) || in_array((string) $key, $extra_allowed, true)) {
                 $filtered[$key] = $value;
             }
         }

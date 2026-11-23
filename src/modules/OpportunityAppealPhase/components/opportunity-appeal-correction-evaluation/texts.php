@@ -23,4 +23,20 @@ return [
     'field-valid' => i::__('Válida'),
     'field-invalid' => i::__('Inválida'),
     'field-not-evaluated' => i::__('Não avaliada'),
+
+    // Habilitação documental (qualification) — mesmo vocabulário do
+    // qualification-evaluation-form do EvaluationMethodQualification
+    'qualification-meets' => i::__('Atende'),
+    'qualification-not-meets' => i::__('Não atende'),
+    'qualification-not-applicable' => i::__('Não se aplica'),
+    'qualification-not-evaluated' => i::__('Não avaliada'),
+    'qualification-eliminatory' => i::__('Critério eliminatório'),
+    'qualification-non-eliminatory' => i::__('Critério não eliminatório'),
+    'qualification-non-eliminatory-notice' => i::__('ATENÇÃO: Para ser habilitado, o proponente pode não atender até {count} critérios'),
+    'qualification-reasons-title' => i::__('Recomendação para atender ao critério'),
+    'qualification-others' => i::__('Outros'),
+    'qualification-others-placeholder' => i::__('Descreva as recomendações para atender ao critério'),
+    'qualification-section-obs' => i::__('Observações/parecer'),
+    'qualification-section-obs-placeholder' => i::__('Digite as observações/parecer'),
+    'qualification-final-obs' => i::__('Observações/parecer final'),
 ];
