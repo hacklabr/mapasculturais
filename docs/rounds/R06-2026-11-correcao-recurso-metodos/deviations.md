@@ -91,3 +91,27 @@
 - **Razão:** confusão do gestor no QA manual (2026-11-23): a linha já-marcada com checkbox ativo era um no-op enganoso (marcar o já marcado) e o "nunca desmarca" impedia entender onde desfazer a marcação antes do envio.
 - **Decisão:** @israelmelo, 2026-11-23 (teste manual do PR #137).
 - **Documento de referência atualizado:** design.md §3.3 (nota as-built) + PRD CA-21 (e bloco "Semântica da autoaplicação").
+
+---
+
+## Nota de reconciliação (#135, 2026-11-23)
+
+**Veredito: desvios completos — 10 declarados durante a execução, 0 descobertos nesta reconciliação.** As entradas 4–6 constavam "pendente de verificação pelo facilitador": verificação encerrada com o aceite da #133 (comentário de veredito por critério, 2026-11-23) e o merge do PR #137.
+
+Mapeamento commit → entrada (cobertura de todos os commits de QA do PR #137):
+
+- `8cdbda0897` (lote via botão+modal, reversão do entity-table) → entrada 7.
+- `1a04eca64e` + `6c1d4efad8` (readOnly do gestor; página sem-permissão volta ao alerta original) → entradas 8–9.
+- `8865169e50` (já-marcada não selecionável; desmarcar via modal de designação) → entrada 10.
+- `3fafd7d34f` (rótulo e altura do botão de lote) → já registrado na própria entrada 7 (nota do QA 2026-11-23 no campo Implementado); sem divergência nova.
+- `19432c8b59` (layout do "Selecionar todos"; chaves `valid`/`invalid` no dicionário de resultado do modal) → refino visual/de exibição dentro da abordagem modal declarada na entrada 7 — o design.md não especifica CSS nem o dicionário de rótulos; sem divergência declarável.
+- `555d142313` (`committee` como computed no modal) → correção interna de TypeError no componente da entrada 7; sem divergência declarável.
+- `9525e360bb` (formulário de correção da habilitação documental no ambiente do corretor) → gap funcional descoberto no QA manual, dentro do escopo declarado da rodada ("correção nos demais métodos"; o design.md é silencioso sobre a forma de dados por método no ambiente do corretor) — registrado no scope.md (Introduzidos); não é divergência do planejado.
+
+**Âncoras que drifted** (os commits de QA deslocaram linhas; valores atuais verificados no merge `02b232d51c`):
+
+- Entrada 4: `applyOpportunityScopeFromQuery` :569-572 → **:747**; `checkPermission('@control')` :589 → **:790**.
+- Entrada 5: 400 de parâmetros combinados :550-552 → **:751-753**.
+- Entrada 6: `phasesInOpportunityScope` :614-629 → **:815-830**; leitura de `$phase->appealPhase` :577-582 → **:778-783**.
+- Entrada 10: rejeição do PATCH do flag em SENT :648-654 → **:648-652** (deslocamento desprezível).
+- Entrada 8: revalidação corretor/janela em `Service::applyCorrection` :35-49 → **:30-50** (ainda correta na substância).
