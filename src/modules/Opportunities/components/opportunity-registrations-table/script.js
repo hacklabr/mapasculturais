@@ -101,7 +101,12 @@ app.component('opportunity-registrations-table', {
         const defaultAvailable = $MAPAS.config.opportunityRegistrationTable.defaultAvailable;
         
         let avaliableFields = defaultAvailable.length > 0 ? [...defaultAvailable] : [];
-        let visible = this.visibleColumns.join(',');
+        // R06 (#131) — CA-18: "Diferença" só existe no método técnico (o da
+        // fase principal, quando a fase em contexto é a de recurso).
+        const appealScoreShowDifference = $MAPAS.config.opportunityRegistrationTable.appealScoreShowDifference !== false;
+        let visible = this.visibleColumns
+            .filter((column) => appealScoreShowDifference || column !== 'scoreDifference')
+            .join(',');
         let order = 'status DESC,consolidatedResult DESC';
         let consolidatedResultOrder = 'consolidatedResult';
 
@@ -118,6 +123,25 @@ app.component('opportunity-registrations-table', {
         const appeal_correction_config = $MAPAS.config.appealCorrectionAssignment || {};
         const appeal_context = appeal_correction_config.appealContexts?.[this.phase.id] ?? null;
         const appeal_correction_enabled = appeal_context != null;
+
+        /*
+            R06 (#134) — CA-21: botão "Autoaplicar nas designações de
+            correção" + modal de seleção em lote (override 2026-11-18, teste
+            manual do PR #137: a coluna de seleção inline quebrava o layout
+            da tabela; rótulo ajustado no QA de 2026-11-23 para deixar claro
+            que o lote MARCA a autoaplicação — o resultado aplica no envio
+            da correção).
+            Somente no contexto da fase de recurso com método da fase
+            PRINCIPAL não-técnico (contorno D2: técnica mantém classificação
+            manual). O método vem do init desta tabela (appealScoreMethod,
+            resolvido via ResultFormatter::methodForOpportunity) e o
+            contexto de gestor @control vem da presença de appealContexts
+            (init do opportunity-appeal-correction-assignment).
+        */
+        const appeal_score_method = $MAPAS.config.opportunityRegistrationTable.appealScoreMethod ?? null;
+        const appeal_bulk_auto_apply_enabled = appeal_correction_enabled
+            && !!appeal_score_method
+            && appeal_score_method !== 'technical';
 
         const fieldTypes = ['select', 'boolean', 'checkbox', 'multiselect', 'checkboxes', 'agent-owner-field', 'agent-collective-field'];
 
@@ -235,6 +259,8 @@ app.component('opportunity-registrations-table', {
             appealCorrectionEnabled: appeal_correction_enabled,
             appealMainPhaseId: appeal_context?.mainPhaseId ?? null,
             appealMainRegistrations: {},
+            appealScoreShowDifference,
+            appealBulkAutoApplyEnabled: appeal_bulk_auto_apply_enabled,
             isAffirmativePoliciesActive,
             hadTechnicalEvaluationPhase,
             isTechnicalEvaluationPhase,
@@ -556,9 +582,15 @@ app.component('opportunity-registrations-table', {
         },
 
         // F4 (#20): colunas de média/nota — null vira "-", números sem zeros à direita.
+        // R06 (#131) — CA-18: métodos não-técnicos retornam strings de exibição
+        // (rótulos do resultado no vocabulário do método) — passam direto.
         formatScoreColumn(value) {
-            if (value === null || value === undefined) {
+            if (value === null || value === undefined || value === '') {
                 return '-';
+            }
+
+            if (typeof value === 'string' && value.trim() !== '' && !Number.isFinite(Number(value))) {
+                return value;
             }
 
             const number = Number(value);
@@ -815,6 +847,24 @@ app.component('opportunity-registrations-table', {
 
                 return null;
             }
-        }
+        },
+
+        /**
+         * R06 (#134) — CA-21: abre o modal de autoaplicação em lote
+         * (override 2026-11-18: a seleção saiu da tabela — coluna de
+         * seleção quebrava o layout — e vive no modal
+         * opportunity-appeal-bulk-auto-apply, aberto por evento global na
+         * mesma interface pública do modal de designação). O modal resolve
+         * a fase principal a partir do id da fase de recurso (appealContexts).
+         */
+        openAppealBulkAutoApply() {
+            if (!this.appealBulkAutoApplyEnabled) {
+                return;
+            }
+
+            window.dispatchEvent(new CustomEvent('opportunity-appeal-bulk-auto-apply:open', {
+                detail: { phase: { id: this.phase.id } },
+            }));
+        },
     }
 });

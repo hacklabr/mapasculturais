@@ -6,6 +6,7 @@
 
 use MapasCulturais\i;
 use MapasCulturais\Entities\Registration;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use SealExemption\SealExemptionService;
 
 $committee = [];
@@ -173,6 +174,22 @@ if ($has_seal_exemption_config) {
 }
 
 
+// R06 (#131) — CA-18: rótulos das colunas de correção por slot conforme o
+// método da fase que origina os slots (na fase de recurso, o da fase
+// PRINCIPAL — ResultFormatter, fonte única com as exportações).
+$score_method = ResultFormatter::methodForOpportunity($opportunity);
+$score_labels = ResultFormatter::headerLabels($score_method, 'slot');
+
+$score_slot_headers = [
+    [ 'text' => $score_labels['original'], 'value' => 'evaluation?.originalScore', 'slug' => 'originalScore'],
+    [ 'text' => $score_labels['corrected'], 'value' => 'evaluation?.correctedScore', 'slug' => 'correctedScore'],
+];
+
+// CA-18: "Diferença" somente no método técnico.
+if ($score_labels['difference'] !== null) {
+    $score_slot_headers[] = [ 'text' => $score_labels['difference'], 'value' => 'evaluation?.scoreDifference', 'slug' => 'scoreDifference'];
+}
+
 $headers = [
     [ 'text' => i::__('inscrição', 'opportunity-evaluations-table'), 'value' => 'number', 'slug' => 'number', 'exportField' => 'number', 'sticky' => true, 'width' => '160px' ],
     [ 'text' => i::__('Nº avaliador', 'opportunity-evaluations-table'), 'value' => 'valuer?.committeeSequentialNumber', 'slug' => 'committeeSequentialNumber', 'exportField' => 'committeeSequentialNumber', 'visible' => true, 'width' => '100px' ],
@@ -182,9 +199,7 @@ $headers = [
     [ 'text' => i::__('Resultado do avaliador', 'opportunity-evaluations-table'), 'value' => 'evaluation?.resultString', 'slug' => 'result', 'exportField' => 'result'],
     // F4 (#20) — CA-11: nota original/corrigida/diferença por slot, computadas
     // pelo módulo OpportunityAppealPhase no findEvaluations (via hook ApiQuery).
-    [ 'text' => i::__('Nota original', 'opportunity-evaluations-table'), 'value' => 'evaluation?.originalScore', 'slug' => 'originalScore'],
-    [ 'text' => i::__('Nota corrigida', 'opportunity-evaluations-table'), 'value' => 'evaluation?.correctedScore', 'slug' => 'correctedScore'],
-    [ 'text' => i::__('Diferença', 'opportunity-evaluations-table'), 'value' => 'evaluation?.scoreDifference', 'slug' => 'scoreDifference'],
+    ...$score_slot_headers,
     [ 'text' => i::__('Tipo de proponente', 'opportunity-evaluations-table'), 'value' => 'proponentType', 'slug' => 'proponentType'],
     [ 'text' => i::__('Categoria', 'opportunity-evaluations-table'), 'value' => 'category', 'slug' => 'category'],
     [ 'text' => i::__('Faixa', 'opportunity-evaluations-table'), 'value' => 'range', 'slug' => 'range'],
@@ -213,4 +228,8 @@ $this->jsObject['config']['opportunityEvaluationsTable'] = [
     'defaultSelect' => $default_select,
     'headers' => $headers,
     'hasSealExemptionConfig' => $has_seal_exemption_config,
+    // R06 (#131) — CA-18: método das colunas de correção e presença da
+    // coluna "Diferença" (somente técnico) — consumido pelo template.
+    'appealScoreMethod' => $score_method,
+    'appealScoreShowDifference' => ResultFormatter::showDifference($score_method),
 ];

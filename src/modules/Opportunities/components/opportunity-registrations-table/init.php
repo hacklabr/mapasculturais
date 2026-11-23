@@ -2,6 +2,7 @@
 
 use MapasCulturais\i;
 use MapasCulturais\Entities\Registration;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 
 $opportunity = $this->controller->requestedEntity;
 $data = [];
@@ -26,6 +27,15 @@ $data['evaluationStatusDict'] = [
     ],
     'qualification' => [
         '0'  => i::__('Não avaliada'),
+        // Chaves canônicas do consolidado (desde a 7.6 o resultado da
+        // habilitação é 'valid'/'invalid' — EvaluationMethodQualification\
+        // Module::_getConsolidatedResult), com rótulos da fonte única do
+        // método (ResultFormatter → valueToString, mesma fonte das colunas
+        // de correção #131). QA 2026-11-23 (#134): sem elas o modal de
+        // autoaplicação em lote exibia o valor cru ("invalid").
+        'valid' => ResultFormatter::formatValue('qualification', 'valid'),
+        'invalid' => ResultFormatter::formatValue('qualification', 'invalid'),
+        // Chaves legadas localizadas (consolidados anteriores à 7.6).
         'Habilitado' => i::__('Habilitado'),
         'Inabilitado' => i::__('Inabilitado'),
     ],
@@ -95,25 +105,35 @@ $default_headers = [
         'text' => i::__('Divisão geográfica do responsável – País'),
         'value' => 'owner?.geoPais',
     ],
-    // F4 (#20) — CA-11: médias por inscrição (computadas pelo módulo
-    // OpportunityAppealPhase no findResult da ApiQuery; o slug entra no
-    // default_select pelo merge de headers abaixo).
-    [
-        'text' => i::__('Média original'),
-        'value' => 'averageOriginalScore',
-        'slug' => 'averageOriginalScore',
-    ],
-    [
-        'text' => i::__('Média corrigida'),
-        'value' => 'averageCorrectedScore',
-        'slug' => 'averageCorrectedScore',
-    ],
-    [
-        'text' => i::__('Diferença'),
+];
+
+// F4 (#20) — CA-11 / R06 (#131) — CA-18: colunas de correção por inscrição
+// (computadas pelo módulo OpportunityAppealPhase no findResult da ApiQuery;
+// o slug entra no default_select pelo merge de headers abaixo). Rótulos e
+// presença da coluna "Diferença" vêm do método da fase que origina as
+// notas — na fase de recurso, o método da fase PRINCIPAL (ResultFormatter).
+$score_method = ResultFormatter::methodForOpportunity($phase);
+$score_labels = ResultFormatter::headerLabels($score_method, 'registration');
+
+$default_headers[] = [
+    'text' => $score_labels['original'],
+    'value' => 'averageOriginalScore',
+    'slug' => 'averageOriginalScore',
+];
+$default_headers[] = [
+    'text' => $score_labels['corrected'],
+    'value' => 'averageCorrectedScore',
+    'slug' => 'averageCorrectedScore',
+];
+
+// CA-18: "Diferença" somente no método técnico.
+if ($score_labels['difference'] !== null) {
+    $default_headers[] = [
+        'text' => $score_labels['difference'],
         'value' => 'scoreDifference',
         'slug' => 'scoreDifference',
-    ],
-];
+    ];
+}
 
 if($phase->isReportingPhase || $phase->isFinalReportingPhase) {
     $default_select .= ',goalStatuses';
@@ -291,5 +311,10 @@ foreach ($statuses_names as $status => $status_name) {
 $data['isAffirmativePoliciesActive'] = $phase->isAffirmativePoliciesActive();
 $data['hadTechnicalEvaluationPhase'] = $phase->hadTechnicalEvaluationPhase();
 $data['isTechnicalEvaluationPhase'] = ($phase->evaluationMethodConfiguration && $phase->evaluationMethodConfiguration->type->id == 'technical');
+
+// R06 (#131) — CA-18: método que dá formato às colunas de correção (na fase
+// de recurso, o da fase principal) e presença da coluna "Diferença".
+$data['appealScoreMethod'] = $score_method;
+$data['appealScoreShowDifference'] = ResultFormatter::showDifference($score_method);
 
 $this->jsObject['config']['opportunityRegistrationTable'] = $data;

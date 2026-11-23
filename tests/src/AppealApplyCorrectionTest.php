@@ -6,6 +6,7 @@ use DateTime;
 use MapasCulturais\App;
 use MapasCulturais\Entities\EvaluationMethodConfiguration;
 use MapasCulturais\Entities\Opportunity;
+use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
 use MapasCulturais\Exceptions\PermissionDenied;
@@ -37,7 +38,10 @@ class AppealApplyCorrectionTest extends TestCase
     }
 
     /**
-     * Cenário: fase técnica com 2 slots + fase de recurso + designação ativa.
+     * Cenário: fase com 2 slots + fase de recurso + designação ativa.
+     *
+     * R06 (#134): parametrizado por método de avaliação (technical default
+     * preserva os testes legados) e pelo flag de autoaplicação.
      *
      * @return array{
      *   admin: User,
@@ -52,11 +56,20 @@ class AppealApplyCorrectionTest extends TestCase
      * }
      */
     private function createCorrectionScenario(
+        EvaluationMethods $method = EvaluationMethods::technical,
         string $correction_type = RegistrationAppealReview::CORRECTION_TYPE_OFFICIAL,
-        ?array $released_criteria = ['c-1'],
-        bool $designate_slot_b = false
+        bool $auto_apply = false,
+        ?array $released_criteria = null,
+        bool $designate_slot_b = false,
+        bool $extra_qualification_criterion = false
     ): array {
         $this->enableFlag();
+
+        // Técnico mantém o escopo histórico ['c-1']; demais métodos são
+        // designação integral (releasedScope nulo, F7/#49).
+        $released_criteria ??= $method === EvaluationMethods::technical ? ['c-1'] : null;
+
+        $data = self::evaluationDataFor($method->name, $extra_qualification_criterion);
 
         $admin = $this->userDirector->createUser('admin');
         $slot_owner_a = $this->userDirector->createUser();
@@ -64,28 +77,47 @@ class AppealApplyCorrectionTest extends TestCase
         $corrector = $slot_owner_a;
         $this->login($admin);
 
-        $this->opportunityBuilder
+        $evaluation_phase = $this->opportunityBuilder
             ->reset(owner: $admin->profile, owner_entity: $admin->profile)
             ->fillRequiredProperties()
             ->firstPhase()
                 ->setRegistrationPeriod(new Open)
                 ->done()
             ->save()
-            ->addEvaluationPhase(EvaluationMethods::technical)
+            ->addEvaluationPhase($method)
                 ->fillRequiredProperties()
                 ->setEvaluationPeriod(new ConcurrentEndingAfter)
-                ->save()
+                ->save();
+
+        if ($method === EvaluationMethods::technical) {
+            $evaluation_phase = $evaluation_phase
                 ->config()
                     ->addSection('sec-1', 'Seção 1')
                     ->addCriterion('c-1', 'sec-1', 'Critério 1', 0, 10, 1)
                     ->addCriterion('c-2', 'sec-1', 'Critério 2', 0, 10, 1)
                     ->done()
-                ->save()
-                ->addValuer('Comissão', 'Avaliador A', $slot_owner_a->profile)
-                    ->done()
-                ->addValuer('Comissão', 'Avaliador B', $slot_owner_b->profile)
-                    ->done()
+                ->save();
+        }
+
+        if ($method === EvaluationMethods::qualification) {
+            $qualification_config = $evaluation_phase
+                ->config()
+                    ->addSection('sec-1', 'Seção 1')
+                    ->addCriterion('cri-1', 'sec-1', 'Critério 1');
+
+            if ($extra_qualification_criterion) {
+                $qualification_config = $qualification_config->addCriterion('cri-2', 'sec-1', 'Critério 2');
+            }
+
+            $evaluation_phase = $qualification_config->done()->save();
+        }
+
+        $evaluation_phase
+            ->addValuer('Comissão', 'Avaliador A', $slot_owner_a->profile)
                 ->done()
+            ->addValuer('Comissão', 'Avaliador B', $slot_owner_b->profile)
+                ->done()
+            ->done()
             ->save();
 
         /** @var Opportunity $opportunity */
@@ -98,7 +130,7 @@ class AppealApplyCorrectionTest extends TestCase
         $slot_a = new RegistrationEvaluation();
         $slot_a->registration = $registration;
         $slot_a->user = $slot_owner_a;
-        $slot_a->setEvaluationData((object) ['c-1' => 4, 'c-2' => 6, 'obs' => 'A']);
+        $slot_a->setEvaluationData((object) $data['slotA']);
         $slot_a->status = RegistrationEvaluation::STATUS_SENT;
         $slot_a->sentTimestamp = new DateTime();
         $slot_a->save(true);
@@ -106,7 +138,7 @@ class AppealApplyCorrectionTest extends TestCase
         $slot_b = new RegistrationEvaluation();
         $slot_b->registration = $registration;
         $slot_b->user = $slot_owner_b;
-        $slot_b->setEvaluationData((object) ['c-1' => 8, 'c-2' => 2, 'obs' => 'B']);
+        $slot_b->setEvaluationData((object) $data['slotB']);
         $slot_b->status = RegistrationEvaluation::STATUS_SENT;
         $slot_b->sentTimestamp = new DateTime();
         $slot_b->save(true);
@@ -119,7 +151,7 @@ class AppealApplyCorrectionTest extends TestCase
         $appeal_phase = new $appeal_phase_class();
         $appeal_phase->parent = $opportunity;
         $appeal_phase->status = Opportunity::STATUS_APPEAL_PHASE;
-        $appeal_phase->name = 'Recurso técnico';
+        $appeal_phase->name = 'Recurso ' . $method->name;
         $appeal_phase->ownerEntity = $opportunity->ownerEntity;
         $appeal_phase->owner = $opportunity->owner;
         $appeal_phase->isDataCollection = true;
@@ -145,7 +177,8 @@ class AppealApplyCorrectionTest extends TestCase
             $slot_owner_a,
             $corrector,
             $correction_type,
-            $released_criteria
+            $released_criteria,
+            $auto_apply
         );
 
         $review_b = null;
@@ -157,7 +190,8 @@ class AppealApplyCorrectionTest extends TestCase
                 $slot_owner_b,
                 $corrector,
                 $correction_type,
-                $released_criteria
+                $released_criteria,
+                $auto_apply
             );
         }
 
@@ -178,6 +212,45 @@ class AppealApplyCorrectionTest extends TestCase
         ];
     }
 
+    /**
+     * Dados de avaliação por método (espelha AppealScoreColumnsTest): slot A
+     * (corrigido), slot B (intacto) e o evaluationData da correção.
+     *
+     * @return array{slotA: array, slotB: array, corrected: array}
+     */
+    private static function evaluationDataFor(string $method, bool $extra_qualification_criterion = false): array
+    {
+        $qualification = [
+            'slotA' => ['cri-1' => ['invalid'], 'obs' => 'A'],
+            'slotB' => ['cri-1' => ['valid'], 'obs' => 'B'],
+            'corrected' => ['cri-1' => ['valid'], 'obs' => 'corrigido'],
+        ];
+
+        if ($extra_qualification_criterion) {
+            $qualification['slotA']['cri-2'] = ['valid'];
+            $qualification['slotB']['cri-2'] = ['valid'];
+        }
+
+        return match ($method) {
+            'simple' => [
+                'slotA' => ['status' => '3', 'obs' => 'A'],
+                'slotB' => ['status' => '10', 'obs' => 'B'],
+                'corrected' => ['status' => '10', 'obs' => 'corrigido'],
+            ],
+            'qualification' => $qualification,
+            'technical' => [
+                'slotA' => ['c-1' => 4, 'c-2' => 6, 'obs' => 'A'],
+                'slotB' => ['c-1' => 8, 'c-2' => 2, 'obs' => 'B'],
+                'corrected' => ['c-1' => 10, 'c-2' => 6, 'obs' => 'corrigido'],
+            ],
+            default => [
+                'slotA' => ['doc_a' => ['evaluation' => 'invalid', 'obs' => 'A']],
+                'slotB' => ['doc_b' => ['evaluation' => 'valid', 'obs' => 'B']],
+                'corrected' => ['doc_a' => ['evaluation' => 'valid', 'obs' => 'corrigido']],
+            ],
+        };
+    }
+
     private function createReview(
         RegistrationEvaluation $slot,
         $registration,
@@ -185,7 +258,8 @@ class AppealApplyCorrectionTest extends TestCase
         User $slot_owner,
         User $corrector,
         string $correction_type,
-        ?array $released_criteria
+        ?array $released_criteria,
+        bool $auto_apply = false
     ): RegistrationAppealReview {
         $review = new RegistrationAppealReview();
         $review->originalEvaluation = $slot;
@@ -195,6 +269,7 @@ class AppealApplyCorrectionTest extends TestCase
         $review->correctorUser = $corrector;
         $review->status = RegistrationAppealReview::STATUS_DESIGNATED;
         $review->correctionType = $correction_type;
+        $review->autoApply = $auto_apply;
         $review->releasedScope = $released_criteria === null
             ? null
             : (object) ['criteria' => $released_criteria];
@@ -414,6 +489,272 @@ class AppealApplyCorrectionTest extends TestCase
         // Quando a fila é usada, deve haver ao menos um item para a inscrição afetada.
         if (!$app->config['app.recreateCacheImmediately']) {
             $this->assertGreaterThan($before, $after);
+        } else {
+            $this->assertTrue(true);
+        }
+    }
+
+    // ============================================================ //
+    // R06 (#134) — CA-21: autoaplicação do resultado no envio
+    // ============================================================ //
+
+    /**
+     * Simples com autoApply: o consolidado É o código de status (mínimo dos
+     * slots) — correção para Selecionada aplica status 10 e dispara o hook
+     * canônico de status.
+     */
+    function testAutoApplySimpleAppliesConsolidatedStatusAndFiresCanonicalHook(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::simple, auto_apply: true);
+        $app = App::i();
+
+        $hook_fired = 0;
+        $app->hook('entity(Registration).status(approved)', function () use (&$hook_fired): void {
+            $hook_fired++;
+        });
+
+        $status_before = (int) $app->repo('Registration')->find($scenario['registration']->id)->status;
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $review = $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('simple')['corrected']);
+
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+
+        $this->assertSame(RegistrationAppealReview::STATUS_SENT, (int) $review->status);
+        $this->assertSame(10, (int) $registration->status, 'Simplificada com autoaplicação: consolidado 10 → status Selecionada (10).');
+        $this->assertNotSame($status_before, (int) $registration->status);
+        $this->assertSame(1, $hook_fired, 'Hook canônico entity(Registration).status(approved) deve disparar como na aplicação manual.');
+
+        // Auditoria: revisão do slot registra a autoaplicação.
+        $last_revision = $app->repo('RegistrationEvaluation')->find($scenario['slotA']->id)->getLastRevision();
+        $this->assertNotNull($last_revision);
+        $this->assertStringContainsString('autoaplicado', $last_revision->message);
+    }
+
+    /**
+     * Documental com autoApply: consolidado 1 (todos os campos válidos) →
+     * STATUS_APPROVED (mapeamento 1/−1 do core).
+     */
+    function testAutoApplyDocumentaryMapsValidToApproved(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::documentary, auto_apply: true);
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('documentary')['corrected']);
+
+        $registration = App::i()->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame(10, (int) $registration->status, 'Documental com autoaplicação: consolidado 1 → status Selecionada (10).');
+    }
+
+    /**
+     * Habilitação documental com autoApply: consolidado 'valid' →
+     * STATUS_APPROVED (mapeamento do próprio método).
+     */
+    function testAutoApplyQualificationMapsValidToApproved(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::qualification, auto_apply: true);
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('qualification')['corrected']);
+
+        $registration = App::i()->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame(10, (int) $registration->status, 'Habilitação com autoaplicação: consolidado valid → status Selecionada (10).');
+    }
+
+    /**
+     * Rework (#134, QA 2026-11-23): correção REAL de habilitação documental —
+     * critério invalid→valid no shape do método (array por critério), com
+     * diff do evaluationData persistido, recálculo do consolidado
+     * ('invalid' → 'valid') e autoaplicação Inabilitado → Habilitado.
+     */
+    function testQualificationCorrectionRecalculatesConsolidatedAndAutoAppliesHabilitado(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::qualification, auto_apply: true);
+        $app = App::i();
+
+        $this->assertSame('invalid', $scenario['originalConsolidated'], 'Cenário começa inabilitado (slot A com critério invalid).');
+
+        // Simula o resultado aplicado antes do recurso: Inabilitado (3).
+        $app->disableAccessControl();
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+        $registration->status = Registration::STATUS_NOTAPPROVED;
+        $registration->save(true);
+        $app->enableAccessControl();
+
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $review = $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('qualification')['corrected']);
+
+        // evaluationData persistido no shape do método (array por critério).
+        $slot_a = $app->repo('RegistrationEvaluation')->find($scenario['slotA']->id);
+        $this->assertEquals(['valid'], (array) $slot_a->evaluationData->{'cri-1'}, 'Critério corrigido de invalid para valid.');
+        $this->assertSame('corrigido', $slot_a->evaluationData->obs);
+        $this->assertSame('valid', $slot_a->result, 'Resultado do slot recalculado pelo getEvaluationResult do método qualification.');
+
+        // Slot B intacto (regressão).
+        $slot_b = $app->repo('RegistrationEvaluation')->find($scenario['slotB']->id);
+        $this->assertEquals(['valid'], (array) $slot_b->evaluationData->{'cri-1'});
+
+        // Consolidado recalculado + autoaplicação Inabilitado → Habilitado.
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame('valid', $registration->consolidatedResult, 'Consolidado recalculado: todos os slots válidos.');
+        $this->assertSame(Registration::STATUS_APPROVED, (int) $registration->status, 'Autoaplicação: Inabilitado (3) → Habilitado (10).');
+
+        $this->assertSame(RegistrationAppealReview::STATUS_SENT, (int) $review->status);
+        $this->assertEquals(['valid'], (array) $review->correctedValue->{'cri-1'});
+    }
+
+    /**
+     * Rework (#134, QA 2026-11-23): escopo restrito em habilitação
+     * documental — as chaves companheiras do critério liberado
+     * (`{criterio}_reason` e `{sectionId}`, shape do
+     * qualification-evaluation-form) atravessam o escopo; critério fora do
+     * escopo com valor divergente segue rejeitado.
+     */
+    function testQualificationScopedCorrectionPersistsReasonsAndSectionObservation(): void
+    {
+        $scenario = $this->createCorrectionScenario(
+            EvaluationMethods::qualification,
+            released_criteria: ['cri-1'],
+            extra_qualification_criterion: true
+        );
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+
+        // Critério fora do escopo com valor divergente → rejeitado (e a designação segue ativa).
+        try {
+            $service->applyCorrection($scenario['reviewA'], ['cri-2' => ['invalid']]);
+            $this->fail('Critério fora do escopo liberado deveria ser rejeitado.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('cri-2', $e->getMessage());
+        }
+
+        $review = $service->applyCorrection($scenario['reviewA'], [
+            'cri-1' => ['invalid', 'Documento ilegível'],
+            'cri-1_reason' => 'Reenviar o documento em versão legível',
+            'sec-1' => 'Parecer da seção corrigido',
+            'obs' => 'corrigido',
+        ]);
+
+        $slot_a = App::i()->repo('RegistrationEvaluation')->find($scenario['slotA']->id);
+        $data = $slot_a->evaluationData;
+
+        $this->assertEquals(['invalid', 'Documento ilegível'], (array) $data->{'cri-1'}, 'Motivos do "Não atende" persistidos no array do critério.');
+        $this->assertSame('Reenviar o documento em versão legível', $data->{'cri-1_reason'}, 'Texto do "Outros" (`{criterio}_reason`) atravessa o escopo.');
+        $this->assertSame('Parecer da seção corrigido', $data->{'sec-1'}, 'Observação da seção (`{sectionId}`) atravessa o escopo.');
+        $this->assertSame('corrigido', $data->obs);
+        $this->assertEquals(['valid'], (array) $data->{'cri-2'}, 'Critério fora do escopo permanece intacto.');
+        $this->assertSame('invalid', $slot_a->result, 'Critério eliminatório invalid → resultado do slot invalid.');
+
+        $this->assertSame(RegistrationAppealReview::STATUS_SENT, (int) $review->status);
+    }
+
+    /**
+     * Sem autoaplicação nada muda em relação ao comportamento atual:
+     * correção in-place + reconsolidação, status intacto (semântica default).
+     */
+    function testAutoApplyFalseLeavesStatusUnchanged(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::simple, auto_apply: false);
+        $app = App::i();
+
+        $status_before = (int) $app->repo('Registration')->find($scenario['registration']->id)->status;
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('simple')['corrected']);
+
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame($status_before, (int) $registration->status, 'Sem autoaplicação o status da inscrição permanece intacto.');
+        $this->assertSame('10', (string) $registration->consolidatedResult, 'Reconsolidação continua acontecendo (comportamento atual).');
+    }
+
+    /**
+     * D2: técnica flagada (por engano, direto na entidade — a API força false)
+     * continua no-op — o core não autoaplica nota técnica.
+     */
+    function testAutoApplyTechnicalFlaggedIsNoOp(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::technical, auto_apply: true);
+        $app = App::i();
+
+        $status_before = (int) $app->repo('Registration')->find($scenario['registration']->id)->status;
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], ['c-1' => 10]);
+
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame($status_before, (int) $registration->status, 'Técnica com flag: classificação permanece aplicação manual (no-op do core).');
+        $this->assertEquals(13.0, (float) $registration->consolidatedResult, 'Reconsolidação técnica segue normal.');
+
+        // Sem nota de autoaplicação na auditoria (nada foi aplicado).
+        $last_revision = $app->repo('RegistrationEvaluation')->find($scenario['slotA']->id)->getLastRevision();
+        $this->assertStringNotContainsString('autoaplicado', $last_revision->message);
+    }
+
+    /**
+     * D3: correction_type=record nunca autoaplica — o ramo record não passa
+     * pelo caminho de aplicação (defesa em profundidade além do force-false
+     * da API).
+     */
+    function testAutoApplyRecordTypeNeverApplies(): void
+    {
+        $scenario = $this->createCorrectionScenario(
+            EvaluationMethods::simple,
+            correction_type: RegistrationAppealReview::CORRECTION_TYPE_RECORD,
+            auto_apply: true
+        );
+        $app = App::i();
+
+        $status_before = (int) $app->repo('Registration')->find($scenario['registration']->id)->status;
+        $this->login($scenario['corrector']);
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('simple')['corrected']);
+
+        $registration = $app->repo('Registration')->find($scenario['registration']->id);
+        $this->assertSame($status_before, (int) $registration->status, 'Somente registro nunca aplica resultado no status.');
+        $this->assertEquals($scenario['originalConsolidated'], $registration->consolidatedResult);
+    }
+
+    /**
+     * pcache preservada com autoaplicação: a inscrição continua na fila de
+     * recriação após o envio da correção (mesma guarda do teste sem flag).
+     */
+    function testPcacheQueuedWithAutoApply(): void
+    {
+        $scenario = $this->createCorrectionScenario(EvaluationMethods::simple, auto_apply: true);
+        $this->login($scenario['corrector']);
+
+        $app = App::i();
+        $conn = $app->em->getConnection();
+        $before = (int) $conn->fetchOne(
+            'SELECT COUNT(*) FROM permission_cache_pending WHERE object_type LIKE :t AND object_id = :id',
+            [
+                't' => '%Registration%',
+                'id' => $scenario['registration']->id,
+            ]
+        );
+
+        $service = new Service();
+        $service->applyCorrection($scenario['reviewA'], self::evaluationDataFor('simple')['corrected']);
+
+        $after = (int) $conn->fetchOne(
+            'SELECT COUNT(*) FROM permission_cache_pending WHERE object_type LIKE :t AND object_id = :id',
+            [
+                't' => '%Registration%',
+                'id' => $scenario['registration']->id,
+            ]
+        );
+
+        if (!$app->config['app.recreateCacheImmediately']) {
+            $this->assertGreaterThan($before, $after, 'Inscrição autoaplicada deve seguir na fila de recriação de pcache.');
         } else {
             $this->assertTrue(true);
         }

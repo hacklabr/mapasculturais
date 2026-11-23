@@ -6,6 +6,7 @@ use MapasCulturais\App;
 use MapasCulturais\Entities\Job;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\i;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use SealExemption\SealExemptionService;
 
 /**
@@ -433,6 +434,48 @@ abstract class EvaluationsSpreadsheetJob extends SpreadsheetJob
             'valuerUserId' => $user_id ?? '',
             'valuerAgentId' => $valuer['id'] ?? '',
             'user' => $valuer['name'] ?? '',
+        ];
+    }
+
+    /**
+     * R06 (#131) — CA-18: sub-cabeçalho das colunas de correção por slot
+     * (original/corrigida), incluído quando a fase possui designações de
+     * correção de recurso. Os rótulos vêm da fonte única por método
+     * (ResultFormatter: "Resultado original/Resultado corrigido" fora do
+     * técnico; o job técnico não consome este helper).
+     *
+     * @return array<string, string>
+     */
+    protected function appealReviewSubHeader(Job $job): array
+    {
+        if (!ResultFormatter::opportunityHasAppealReviews($job->owner)) {
+            return [];
+        }
+
+        $labels = ResultFormatter::headerLabels(ResultFormatter::methodForOpportunity($job->owner), 'slot');
+
+        return [
+            'originalScore' => $labels['original'],
+            'correctedScore' => $labels['corrected'],
+        ];
+    }
+
+    /**
+     * Valores das colunas de correção por slot — já formatados pelo enrichment
+     * do módulo OpportunityAppealPhase (números no técnico; rótulos do método
+     * nos demais). Chaves fora do sub_header são ignoradas pelo _execute.
+     *
+     * @return array<string, mixed>
+     */
+    protected function appealReviewColumns(?array $evaluation): array
+    {
+        if ($evaluation === null) {
+            return [];
+        }
+
+        return [
+            'originalScore' => $evaluation['originalScore'] ?? null,
+            'correctedScore' => $evaluation['correctedScore'] ?? null,
         ];
     }
 

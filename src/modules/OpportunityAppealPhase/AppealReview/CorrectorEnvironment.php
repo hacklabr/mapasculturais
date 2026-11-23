@@ -32,20 +32,33 @@ class CorrectorEnvironment
     {
         $app = App::i();
         $this->assertFeatureEnabled();
-        $this->assertCanAccess($review, $app->user);
+
+        // CA-20 (#133 rework, 2026-11-19): VISUALIZAÇÃO dual — corretor
+        // designado OU gestor com @control na fase principal. A escrita
+        // continua exclusiva do corretor (Service::applyCorrection
+        // revalida): o payload carrega readOnly para o frontend travar.
+        $this->assertViewable($review, $app->user);
 
         $slot = $review->originalEvaluation;
         $scope_ids = $this->getReleasedCriteriaIds($review);
 
-        // Após envio o slot já contém a nota corrigida; a original fica no snapshot da designação.
-        $original_data = $review->originalValue ?? $slot->getEvaluationData();
-        $original = $this->filterEvaluationData((array) $original_data, $scope_ids);
-        $draft = $review->correctedValue
-            ? $this->filterEvaluationData((array) $review->correctedValue, $scope_ids)
-            : null;
-
         $main_emc = $slot->registration->opportunity->evaluationMethodConfiguration;
         $method_id = $main_emc ? (string) $main_emc->type->id : '';
+
+        // Habilitação documental (qualification): o evaluationData tem chaves
+        // companheiras além dos ids de critério — `{criterio}_reason` (motivo
+        // do "Outros") e obs por seção (`{sectionId}`) — que precisam atravessar
+        // o filtro de escopo junto com o critério liberado.
+        $companion_keys = $method_id === 'qualification' && $scope_ids !== null
+            ? $this->getQualificationCompanionKeys($slot, $scope_ids)
+            : [];
+
+        // Após envio o slot já contém a nota corrigida; a original fica no snapshot da designação.
+        $original_data = $review->originalValue ?? $slot->getEvaluationData();
+        $original = $this->filterEvaluationData((array) $original_data, $scope_ids, $companion_keys);
+        $draft = $review->correctedValue
+            ? $this->filterEvaluationData((array) $review->correctedValue, $scope_ids, $companion_keys)
+            : null;
 
         $registration = $review->registration;
 
@@ -66,6 +79,15 @@ class CorrectorEnvironment
             'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
             'status' => self::STATUS_LABELS[(int) $review->status] ?? (string) $review->status,
             'correctionType' => $review->correctionType,
+            // R06 (#133 rework — CA-20): true quando o VISUALIZADOR não pode
+            // escrever (gestor sem designação, corretor fora da janela ou
+            // designação enviada/encerrada) — o frontend renderiza somente
+            // leitura. Corretor designado, designação ativa e dentro do
+            // prazo recebe false.
+            'readOnly' => !$this->canWrite($review, $app->user),
+            // R06 (#134) — CA-21: aviso ao corretor de que o resultado será
+            // aplicado no status da inscrição no envio da correção.
+            'autoApply' => (bool) $review->autoApply,
             'originalEvaluation' => (object) $original,
             'draft' => $draft !== null ? (object) $draft : null,
         ];
@@ -78,6 +100,11 @@ class CorrectorEnvironment
             $payload['fields'] = $this->buildDocumentaryFields($review, $scope_ids);
         } elseif ($method_id === 'simple') {
             $payload['statusOptions'] = $this->buildSimpleStatusOptions();
+        } elseif ($method_id === 'qualification') {
+            // Habilitação documental: seções do EMC que contêm critérios
+            // liberados (o formulário do corretor espelha o
+            // qualification-evaluation-form, agrupado por seção).
+            $payload['sections'] = $this->buildQualificationSectionsMetadata($slot, $scope_ids);
         }
 
         if ($this->shouldShowAppealOpinion($review)) {
@@ -147,6 +174,8 @@ class CorrectorEnvironment
                 'deadline' => $review->endsAt ? $review->endsAt->format('c') : null,
                 'sentAt' => $review->sentTimestamp ? $review->sentTimestamp->format('c') : null,
                 'available' => $review->isActive() && !$not_started && !$expired,
+                // R06 (#134) — CA-21: transparência do efeito no envio.
+                'autoApply' => (bool) $review->autoApply,
                 'correctionUrl' => self::correctionUrl($review),
             ];
         }
@@ -159,26 +188,79 @@ class CorrectorEnvironment
         return App::i()->createUrl('appealCorrector', 'correction', [$review->id]);
     }
 
-    private function assertCanAccess(RegistrationAppealReview $review, $user): void
+    /**
+     * CA-20 (#133 rework, 2026-11-19): VISUALIZAÇÃO do ambiente.
+     *
+     * Corretor designado (qualquer status — histórico incluso) OU gestor
+     * com `@control` na fase PRINCIPAL da inscrição da designação (mesma
+     * âncora de permissão da listagem por oportunidade e do POST_bulk —
+     * sem ampliação: quem só controla a fase de recurso não entra).
+     *
+     * Sem exigência de designação ativa nem janela de prazo: designações
+     * enviadas/encerradas permanecem visíveis para corretor (histórico) e
+     * gestor (acompanhamento).
+     */
+    public function canView(RegistrationAppealReview $review, $user = null): bool
     {
+        $user = $user ?? App::i()->user;
+
         if ($user->is('guest')) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
+        }
+
+        if ($review->correctorUser && $review->correctorUser->equals($user)) {
+            return true;
+        }
+
+        return $review->registration->opportunity->canUser('@control', $user);
+    }
+
+    /**
+     * ESCRITA (corretor designado): regra intacta — designação ativa,
+     * titularidade do corretor e janela de prazo. Espelha a revalidação
+     * de Service::applyCorrection (o envio re-checa no backend; o readOnly
+     * do payload é derivado daqui).
+     */
+    public function canWrite(RegistrationAppealReview $review, $user = null): bool
+    {
+        $user = $user ?? App::i()->user;
+
+        if ($user->is('guest')) {
+            return false;
         }
 
         if (!$review->isActive()) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
 
         if (!$review->correctorUser || !$review->correctorUser->equals($user)) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
 
         $now = new DateTime();
         if ($review->startsAt && $now < $review->startsAt) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
         }
         if ($review->endsAt && $now > $review->endsAt) {
-            throw new PermissionDenied($user, $review, 'correctorEnvironment');
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Guard de visualização do payload do ambiente: feature flag + canView.
+     * Quem não pode ver recebe PermissionDenied, que o controller do
+     * environment converte em errorJson 403 — endpoint AJAX; o bloqueio
+     * real dos dados vive aqui (a página de correção é dumb page para
+     * usuário logado desde o rework de 2026-11-19, feedback do PR #137).
+     */
+    public function assertViewable(RegistrationAppealReview $review, $user = null): void
+    {
+        $this->assertFeatureEnabled();
+
+        if (!$this->canView($review, $user)) {
+            throw new PermissionDenied($user ?? App::i()->user, $review, 'correctorEnvironment');
         }
     }
 
@@ -257,18 +339,131 @@ class CorrectorEnvironment
 
             $sid = isset($criterion->sid) ? (string) $criterion->sid : null;
 
-            $out[] = [
+            $item = [
                 'id' => $id,
-                'title' => (string) ($criterion->title ?? $id),
+                // Técnico usa `title`; habilitação documental usa `name` (mesma
+                // fonte do qualification-evaluation-form).
+                'title' => (string) ($criterion->title ?? $criterion->name ?? $id),
                 'min' => (float) ($criterion->min ?? 0),
                 'max' => (float) ($criterion->max ?? 0),
                 'weight' => (float) ($criterion->weight ?? 1),
                 'sectionId' => $sid,
                 'sectionName' => $sid !== null ? ($section_names[$sid] ?? '') : null,
             ];
+
+            // Campos específicos da habilitação documental (presentes só
+            // quando definidos no EMC — técnico/documental não os têm, então
+            // o payload desses métodos permanece intacto).
+            if (isset($criterion->options) && is_array($criterion->options)) {
+                $item['options'] = array_values($criterion->options);
+            }
+            if (isset($criterion->notApplyOption)) {
+                $item['notApplyOption'] = $criterion->notApplyOption === true || $criterion->notApplyOption === 'true';
+            }
+            if (isset($criterion->otherReasonsOption)) {
+                $item['otherReasonsOption'] = $criterion->otherReasonsOption === true || $criterion->otherReasonsOption === 'true';
+            }
+            if (isset($criterion->nonEliminatory)) {
+                $item['nonEliminatory'] = $criterion->nonEliminatory === true || $criterion->nonEliminatory === 'true';
+            }
+            if (isset($criterion->description) && $criterion->description !== '') {
+                $item['description'] = (string) $criterion->description;
+            }
+
+            $out[] = $item;
         }
 
         return $out;
+    }
+
+    /**
+     * Seções do EMC da fase principal que contêm critérios liberados, com a
+     * configuração que o formulário de habilitação documental consome
+     * (maxNonEliminatory/numberMaxNonEliminatory — mesmos campos que
+     * EvaluationMethodQualification\Module::getEvaluationResult lê).
+     *
+     * @param string[]|null $scope_ids null = todas as seções com critérios
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildQualificationSectionsMetadata(RegistrationEvaluation $slot, ?array $scope_ids): array
+    {
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        if (!$emc) {
+            return [];
+        }
+
+        $sections = $emc->sections ?? [];
+        $criteria = $emc->criteria ?? [];
+
+        if (is_string($sections)) {
+            $sections = json_decode($sections);
+        }
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        $released_section_ids = [];
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (!isset($criterion->id, $criterion->sid)) {
+                continue;
+            }
+            if ($scope_ids !== null && !in_array((string) $criterion->id, $scope_ids, true)) {
+                continue;
+            }
+
+            $released_section_ids[(string) $criterion->sid] = true;
+        }
+
+        $out = [];
+        foreach ((array) $sections as $section) {
+            $section = (object) $section;
+            if (!isset($section->id) || !isset($released_section_ids[(string) $section->id])) {
+                continue;
+            }
+
+            $out[] = [
+                'id' => (string) $section->id,
+                'name' => (string) ($section->name ?? ''),
+                'maxNonEliminatory' => !empty($section->maxNonEliminatory),
+                'numberMaxNonEliminatory' => (int) ($section->numberMaxNonEliminatory ?? 0),
+                'requiredSectionObservation' => !empty($section->requiredSectionObservation),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Chaves companheiras da habilitação documental que atravessam o escopo
+     * junto com o critério liberado: `{criterio}_reason` (texto do "Outros")
+     * e `{sectionId}` (observações/parecer da seção, chaveado pelo id da
+     * seção no evaluationData — padrão do qualification-evaluation-form).
+     *
+     * @param string[] $scope_ids
+     * @return string[]
+     */
+    private function getQualificationCompanionKeys(RegistrationEvaluation $slot, array $scope_ids): array
+    {
+        $keys = [];
+        foreach ($scope_ids as $id) {
+            $keys[] = $id . '_reason';
+        }
+
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        $criteria = $emc ? ($emc->criteria ?? []) : [];
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (isset($criterion->id, $criterion->sid) && in_array((string) $criterion->id, $scope_ids, true)) {
+                $keys[] = (string) $criterion->sid;
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**
@@ -331,9 +526,11 @@ class CorrectorEnvironment
     /**
      * @param array<string, mixed> $data
      * @param string[]|null $scope_ids
+     * @param string[] $extra_allowed chaves companheiras liberadas junto ao
+     *   escopo (habilitação documental: `{criterio}_reason` e `{sectionId}`)
      * @return array<string, mixed>
      */
-    private function filterEvaluationData(array $data, ?array $scope_ids): array
+    private function filterEvaluationData(array $data, ?array $scope_ids, array $extra_allowed = []): array
     {
         if ($scope_ids === null) {
             return $data;
@@ -343,7 +540,7 @@ class CorrectorEnvironment
         // da correção e exequibilidade), alinhado a mergeWithinReleasedScope.
         $filtered = [];
         foreach ($data as $key => $value) {
-            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope_ids, true)) {
+            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope_ids, true) || in_array((string) $key, $extra_allowed, true)) {
                 $filtered[$key] = $value;
             }
         }
@@ -471,8 +668,9 @@ class CorrectorEnvironment
             $current = OpportunityPhases::getPreviousPhaseRegistration($current);
         }
 
-        // Leitura privilegiada: o corretor já passou por assertCanAccess; o ??
-        // do PHP NÃO dispara __get de metadados (isset sem __isset), então
+        // Leitura privilegiada: o visualizador já passou por assertViewable
+        // (corretor designado ou gestor com @control); o ?? do PHP NÃO
+        // dispara __get de metadados (isset sem __isset), então
         // `$reg->field_X ?? null` sempre virava null mesmo com valor no banco.
         $app = App::i();
         $app->disableAccessControl();
