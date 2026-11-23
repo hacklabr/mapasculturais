@@ -43,15 +43,23 @@
     opacity: .7;
 }
 
+/*
+ * QA 2026-11-23 (#134): bloco "Selecionar todos" encolhido ao conteúdo
+ * (align-self: flex-start + width auto) — o fundo cinza não atravessa a
+ * largura do modal; contador "N selecionada(s)" ao lado do checkbox
+ * (justify-content: flex-start, sem grupo centralizado).
+ */
 .opportunity-appeal-bulk-auto-apply__select-all {
     align-items: center;
+    align-self: flex-start;
     background-color: var(--mc-gray-100);
     border: 1px solid var(--mc-gray-300);
     border-radius: var(--mc-border-radius-sm);
     display: flex;
     gap: .75rem;
-    justify-content: space-between;
+    justify-content: flex-start;
     padding: .5rem .75rem;
+    width: auto;
 }
 
 .opportunity-appeal-bulk-auto-apply__select-all label {

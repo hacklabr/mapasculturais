@@ -38,7 +38,9 @@
  * - .evaluators / .committees → nomes de corretores (a relação user não
  *   expande nome na API);
  * - $MAPAS.config.opportunityRegistrationTable.evaluationStatusDict →
- *   rótulos do resultado por método (mesma fonte da coluna "Avaliação").
+ *   rótulos do resultado por método (mesma fonte da coluna "Avaliação");
+ *   habilitação documental usa as chaves canônicas valid/invalid do
+ *   consolidado (rótulos vindos do valueToString do método — QA 2026-11-23).
  *
  * Backend consumido (somente endpoints existentes, sem mudanças):
  * - GET  /api/registrationappealreview/find?opportunity=…  → listagem por

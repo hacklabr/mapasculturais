@@ -58,8 +58,8 @@ $this->import('
                     {{ text('description') }}
                 </p>
 
-                <?php /* Selecionar todos — mesmo padrão do seletor de escopo do modal de designação (fields-visible-evaluators) */ ?>
-                <div class="opportunity-appeal-bulk-auto-apply__select-all field">
+                <?php /* Selecionar todos — mesmo padrão do seletor de escopo do modal de designação (fields-visible-evaluators). QA 2026-11-23: sem a classe utilitária `field` (ela estica o label em 100% e desalinha o bloco). */ ?>
+                <div class="opportunity-appeal-bulk-auto-apply__select-all">
                     <label class="semibold" for="bulk-apply-all">
                         <input
                             type="checkbox"

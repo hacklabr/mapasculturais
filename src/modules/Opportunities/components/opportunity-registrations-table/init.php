@@ -27,6 +27,15 @@ $data['evaluationStatusDict'] = [
     ],
     'qualification' => [
         '0'  => i::__('Não avaliada'),
+        // Chaves canônicas do consolidado (desde a 7.6 o resultado da
+        // habilitação é 'valid'/'invalid' — EvaluationMethodQualification\
+        // Module::_getConsolidatedResult), com rótulos da fonte única do
+        // método (ResultFormatter → valueToString, mesma fonte das colunas
+        // de correção #131). QA 2026-11-23 (#134): sem elas o modal de
+        // autoaplicação em lote exibia o valor cru ("invalid").
+        'valid' => ResultFormatter::formatValue('qualification', 'valid'),
+        'invalid' => ResultFormatter::formatValue('qualification', 'invalid'),
+        // Chaves legadas localizadas (consolidados anteriores à 7.6).
         'Habilitado' => i::__('Habilitado'),
         'Inabilitado' => i::__('Inabilitado'),
     ],
