@@ -12,12 +12,69 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Na correção de notas após recurso deferido, o gestor escolhe quais campos do formulário o corretor pode ver (seletor no padrão “Abrir lista de campos”); o corretor vê os valores liberados com links de anexo, registra parecer da correção no método técnico, e a lista de inscritos deixa de mostrar a coluna interna de snapshot preliminar (que duplicava a média original)
 
 ### Novas Funcionalidades
+- Substitui o iframe legado (AngularJS) da aba Relatórios da gestão de oportunidade por componentes Vue nativos, incluindo os gráficos estáticos e o construtor de gráficos personalizados (criar, editar, pré-visualizar e excluir)
+- Adiciona filtro por tipo de proponente e por faixa/linha aos relatórios da oportunidade, disponíveis como campos selecionáveis no construtor de gráficos e na exportação em CSV
 - Na comissão de avaliação, o gestor pode selecionar no modal uma ou mais avaliações enviadas para reabrir, ou reabrir todas as enviadas de uma pessoa avaliadora. Na seleção, apenas as escolhidas passam para concluídas.
 - Adiciona configuração na oportunidade para ocultar todas as datas das fases na página pública, na linha do tempo de acompanhamento da inscrição e nos avisos de prazo da ficha, mantendo as datas operacionais ativas para validações e gestão interna.
 - **Avaliação automática por selos**: o gestor pode indicar, em uma fase de avaliação, quais selos validam o proponente. Se a pessoa já tiver esses selos válidos no perfil, a inscrição é **dispensada automaticamente** daquela fase (marcada como “Dispensada por selos”) e segue para a próxima etapa, sem precisar de avaliador
 - **Novos anexos no cadastro do agente** (também usáveis como campos `@` no formulário de inscrição): CPF, CNPJ, CNH, RG, passaporte, comprovante de residência, vínculo territorial, currículo, portfólio, certidões fiscal, trabalhista e de prestação de contas, além de comprovantes de raça/cor, pessoa com deficiência e comunidades tradicionais. Os arquivos ficam no perfil e acompanham a inscrição automaticamente
 - **Filtros territoriais unificados nas buscas**: as cinco buscas públicas (agente, espaço, evento, projeto e oportunidade) passam a ter filtro de Estado e Município unificado. A variável de ambiente `EVENTS_FILTER_STATES_AND_CITIES` deixa de ter efeito e as novas `SEARCH_FILTER_STATES`/`SEARCH_FILTER_CITIES` permitem recortar resultados por território (com estados configurados, o seletor lista apenas esses estados); a API pública permanece sem restrição (detalhes no [UPGRADING.md](UPGRADING.md))
 - **Documentação navegável da API pública** em `/api/documentation`: página com os endpoints de leitura das entidades (Agentes, Eventos, Espaços, Projetos, Oportunidades), filtros, formatos e schemas de resposta, com opção de testar cada consulta no próprio navegador
+
+### Correções
+- Corrige "Tipo de proponente" e "Faixa/Linha" que não apareciam como opções de campo no construtor de gráficos de relatórios
+- Corrige gráfico personalizado salvo nos relatórios que podia colidir ou ser sobrescrito por outro com os mesmos campos em uma oportunidade diferente
+- Corrige erro ao carregar os gráficos estáticos de relatórios em oportunidades sem avaliação técnica configurada
+- Corrige loop de redimensionamento nos gráficos dos relatórios que fazia a tela tremer continuamente
+
+### Melhorias
+- Ajusta ícones, botões e campos do construtor de gráficos de relatórios para seguir o padrão visual da plataforma
+
+### Melhorias não funcionais
+- Adiciona testes automatizados para os filtros de tipo de proponente e faixa/linha e para a correção de duplicação de gráficos personalizados nos relatórios
+
+## [7.8.24] - 2026-11-19
+### Melhorias
+- Atualiza o PHP para a versão 8.3.37, com as correções de segurança recomendadas pelo próprio PHP
+
+## [7.8.23] - 2026-11-18
+### Correções
+- Endurece a decodificação de metadados usados em cotas e desempates
+- Passa a serializar jobs de e-mail em formato JSON
+- Força transporte de callback Opauth via sessão
+- Torna estável o desempate na redistribuição de comissões de avaliação
+- Corrige a abertura de pedido na fase de execução, que recusava proponentes cuja inscrição foi feita com outro agente da conta: o pedido passa a poder ser aberto por quem controla o agente responsável pela inscrição, a mesma regra do acompanhamento, e quem não tem vínculo com a inscrição continua sem acesso
+- Corrige a avaliação de recurso em que o avaliador via todos os campos de "Dados informados no formulário" da fase pai, mesmo com a lista de campos visíveis liberando só alguns: o filtro só era aplicado quando a pessoa já tinha `viewUserEvaluation` na inscrição da fase pai, o que não vale para quem avalia apenas o recurso; a ficha da avaliação passa a respeitar essa lista também nesse caso, e os valores não liberados deixam de ser injetados no formulário (gestores com `@control` continuam vendo tudo)
+- Corrige a exibição do aviso "*obrigatório" nos campos do tipo caixa de verificação, tanto na prévia quanto no preenchimento do formulário de inscrição
+- O seletor de datas (`mc-datepicker`) passa a usar o idioma da instalação (`$MAPAS.config.locale`) em vez de ficar sempre em pt-BR, e os nomes dos dias da semana deixam de ser fixos em português
+- Corrige a concessão e a remoção de selos por tipo de proponente e por categoria na publicação/despublicação do resultado e na mudança de status da inscrição: quando a inscrição tinha tipo ou categoria sem chave correspondente em `proponentSeals`/`categorySeals`, o PHP acessava propriedade inexistente e a operação falhava; a aplicação e a remoção dos selos passam a ocorrer só quando a chave existe, e `applySeal`/`removeSeals` ignoram listas nulas ou vazias
+
+## [7.8.22] - 2026-11-11
+### Correções
+- Corrige os campos de tabela/planilha (`custom-table`) na exportação e na tabela da lista de inscrições, que apareciam vazios, como `Array` ou `[object Object]`: os dados passam a mostrar os nomes das colunas e os valores de cada linha, preservando a ordem configurada e valores zero
+- Atualiza o Node.js da imagem Docker para a linha 22 e exige a versão 22.23.4 ou superior nessa linha, incorporando a correção da vulnerabilidade CVE-2026-111497 no decodificador Brotli
+- Preserva as versões das dependências no build Docker com instalação pelo pnpm usando o lockfile congelado
+- Corrige a geração de modelo e de edital a partir de modelo com fase de recurso: o metadado `appealPhase` era copiado com o ID do edital de origem (e o recurso podia ficar com `parent` na 1ª fase em vez da fase de mérito), o que fazia a configuração do formulário e a árvore de fases apontarem para outro edital — inclusive entre subsites no SaaS; o recurso passa a ser clonado com `parent` na fase de mérito correspondente e o vínculo `appealPhase` é religado para essa nova fase, inclusive quando o recurso está na fase de publicação (`isLastPhase`)
+- Corrige a importação de oportunidades para respeitar o filtro `appealPhases`: com a opção desmarcada, fases de recurso presentes no JSON deixam de ser criadas
+- Corrige a duplicação de oportunidades com fase de recurso: além do remap de `parent`/`appealPhase`, o `clone` shallow compartilhava a coleção EAGER `__metadata` com a origem, então o vínculo da cópia não era gravado em `opportunity_meta`; a cópia recarrega as metas após o insert e grava `appealPhase` como linha própria
+- Corrige a duplicação de oportunidades com fase de recurso: a cópia mantinha o metadado `appealPhase` e o `parent` do recurso apontando para o edital de origem, o que fazia a validação de datas do recurso usar a árvore errada; o recurso passa a ser clonado com `parent` na fase de mérito correspondente da cópia e o vínculo `appealPhase` é religado para essa nova fase
+- Corrige a duplicação de oportunidades que terminava em erro 500 ao reescrever os campos visíveis para o avaliador: o remapeamento usava um método `private` de outro trait e não enxergava o mapa de campos da cópia; o remapeamento passa a rodar no próprio duplicador
+- Corrige o modal "Configurar campos editáveis", que travava a data limite assim que havia campos selecionados: o gestor volta a conseguir estender/reabrir o prazo perdido do proponente
+
+### Melhorias
+- Na busca de eventos, ajusta a visualização dos administradores que passam a ver a aba Tabela, com listagem em colunas e exportação de planilha, no mesmo padrão de agentes, espaços, projetos e oportunidades
+- Na gestão de usuários, ajusta a ficha do usuário que passa a ver a aba Avaliações: mostra as fases em que a pessoa avalia (como em Minhas avaliações) e lista as avaliações iniciadas, concluídas e enviadas
+- Na gestão de usuários, os cards da aba Agentes passam a exibir o ID do agente, como na listagem pública
+
+## [7.8.21] - 2026-10-28
+### Correções
+- Corrige o botão "Baixar Anexos (ZIP)" para incluir todos os anexos das fases de coleta de dados da inscrição, organizados por fase e respeitando as permissões de acesso
+- Corrige o alinhamento do menu principal no cabeçalho, que havia sido deslocado para a esquerda na versão 7.8.17, restaurando sua distribuição central entre o logo e os botões de acesso
+- Corrige os campos visíveis para o avaliador, que deixavam o parecerista sem ver a ficha da inscrição inteira enquanto gestores e administradores viam tudo: em editais criados a partir de modelo ou por duplicação, a configuração era copiada com as referências aos campos do edital de origem, que não existem no edital novo, e a tela gravava a marcação como valor booleano, forma que o PHP aceitava e o JavaScript da ficha recusava; as referências passam a ser reescritas para os campos da cópia, em todas as fases, preservando o que estava marcado e o que estava desmarcado, e a marcação passa a ser gravada e lida de forma consistente
+- Corrige a opção "Exibir detalhamento da avaliação anterior para avaliadores do recurso" na configuração da fase de recurso, que não era salva em fases sem a configuração gravada, passando a exibir o valor padrão já utilizado pelo sistema
+
+### Melhorias
+- Ajusta colunas da tabela e planilha de inscritos
 
 ## [7.8.20] - 2026-10-20
 ### Correções
