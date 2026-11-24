@@ -104,6 +104,16 @@ $config = [
     // métodos: null (designação sem seletor; releasedScope nulo = tudo).
     'criteriaCatalogs' => new stdClass(),
 
+    // R06 (#134) — CA-21: opportunityId (fase principal) => slug do método de
+    // avaliação da fase principal. O checkbox de autoaplicação só é oferecido
+    // para métodos não-técnicos (contorno D2 — na técnica a classificação
+    // permanece aplicação manual do gestor).
+    'mainPhaseMethods' => new stdClass(),
+
+    // R06 (#134) — CA-21: default do checkbox de autoaplicação (PRD:
+    // "default explícito e previsível (desmarcado)").
+    'autoApplyDefault' => false,
+
     // Campos do formulário liberáveis ao corretor (mesmo espírito do
     // "Abrir lista de campos" do avaliador): agentsSummary/spaceSummary +
     // registrationFieldConfigurations/registrationFileConfigurations das fases.
@@ -259,6 +269,10 @@ if ($opportunity instanceof Opportunity && $opportunity->status === Opportunity:
         }
 
         $config['criteriaCatalogs']->{$main_phase_id} = $criteria_catalog;
+
+        // R06 (#134) — CA-21: slug do método da fase principal (define se a
+        // autoaplicação é oferecida no modal).
+        $config['mainPhaseMethods']->{$main_phase_id} = $method_id;
 
         // Catálogo de campos do formulário (visão do corretor) —
         // mesmo formato visual do fields-visible-evaluators (#id + título).

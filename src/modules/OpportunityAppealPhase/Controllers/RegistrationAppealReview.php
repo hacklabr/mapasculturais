@@ -5,12 +5,14 @@ namespace OpportunityAppealPhase\Controllers;
 use DateTime;
 use MapasCulturais\App;
 use MapasCulturais\Controllers\EntityController;
+use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\Entities\User;
 use MapasCulturais\i;
 use MapasCulturais\Traits;
 use OpportunityAppealPhase\AppealReview\Notifier;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
 
 /**
@@ -20,12 +22,14 @@ use OpportunityAppealPhase\Entities\RegistrationAppealReview as ReviewEntity;
  * Contrato consumido pelo modal e pelo painel de acompanhamento do F2 (#18):
  * - POST   /registrationappealreview                           → POST_index (designação pelo gestor)
  * - GET    /api/registrationappealreview/find?registration=…   → API_find (listagem por inscrição, CA-13)
+ * - GET    /api/registrationappealreview/find?opportunity=…    → API_find (listagem por oportunidade/fase, CA-20/#133)
  * - GET    /api/registrationappealreview/findOne?id=…          → API_findOne
  * - PUT    /registrationappealreview/single/{id}               → PUT_single (substituir corretor/prazo)
  * - PATCH  /registrationappealreview/single/{id}               → PATCH_single
  * - DELETE /registrationappealreview/single/{id}               → DELETE_single (cancelar designação)
  * - POST   /registrationappealreview/reopen/{id}               → POST_reopen (reabrir correção enviada)
  * - POST   /registrationappealreview/deadline/{id}             → POST_deadline (alterar prazo de designação ativa)
+ * - POST   /registrationappealreview/bulkAutoApply              → POST_bulkAutoApply (marcar autoaplicação em lote, CA-21/#134)
  *
  * Segurança: a entidade não usa owner nem permission cache, então o pseudo-owner
  * das checagens genéricas é o próprio usuário logado e as ações canônicas herdadas
@@ -142,6 +146,12 @@ class RegistrationAppealReview extends EntityController
         }
         $review->correctionType = $correction_type;
 
+        // R06 (#134) — CA-21: autoaplicação do resultado (default false).
+        $review->autoApply = $this->normalizeAutoApply(
+            $review,
+            filter_var($data['autoApply'] ?? false, FILTER_VALIDATE_BOOL)
+        );
+
         $review->releasedScope = $this->parseReleasedScope($data['releasedScope'] ?? null);
         $review->startsAt = $this->parseDateParam($data['startsAt'] ?? null);
         $review->endsAt = $this->parseDateParam($data['endsAt'] ?? null);
@@ -154,18 +164,29 @@ class RegistrationAppealReview extends EntityController
     /**
      * Listagem para o painel de acompanhamento do F2 (CA-13).
      *
-     * Exige `registration` no query string e `@control` na oportunidade
-     * principal da inscrição; o resultado é sempre escopado à inscrição
-     * autorizada, independentemente dos filtros enviados.
+     * Caminho por inscrição (contrato original): exige `registration` no
+     * query string e `@control` na oportunidade principal da inscrição; o
+     * resultado é sempre escopado à inscrição autorizada, independentemente
+     * dos filtros enviados.
+     *
+     * CA-20 (#133): caminho alternativo por `opportunity` (fase principal ou
+     * fase de recurso) — o gestor lista as designações da oportunidade em uma
+     * chamada, em vez de uma por inscrição. Mesma âncora de permissão
+     * (`@control` na fase principal) e escopo forçado às designações das
+     * fases de recurso da oportunidade: sem ampliação de acesso.
      */
     function API_find()
     {
         $this->requireAuthentication();
         $this->assertFeatureEnabled();
 
-        $registration = $this->getAuthorizedRegistrationFromQuery();
+        if ($this->queryParamIsPresent('opportunity')) {
+            $this->applyOpportunityScopeFromQuery();
+        } else {
+            $registration = $this->getAuthorizedRegistrationFromQuery();
+            $this->getData['registration'] = 'EQ(' . $registration->id . ')';
+        }
 
-        $this->getData['registration'] = 'EQ(' . $registration->id . ')';
         $this->applyStatusDomainDefaults();
 
         $data = $this->apiQuery($this->getData);
@@ -335,6 +356,101 @@ class RegistrationAppealReview extends EntityController
         $this->json($review);
     }
 
+    /**
+     * Marca autoaplicação do resultado em LOTE nas designações informadas
+     * (R06/#134 — CA-21): POST /registrationappealreview/bulkAutoApply com
+     * {ids: [<id de designação>, ...]}.
+     *
+     * O lote só MARCA (PRD: "não desmarcar"): fixa autoApply=true em
+     * designações ativas (não SENT), oficiais e de método não-técnico — os
+     * demais ids voltam no relatório como skipped com motivo, na mesma
+     * resposta (sem estado parcial orquestrado no cliente).
+     *
+     * Segurança: requireAuthentication + feature flag + `@control` na fase
+     * principal de cada designação (mesma âncora da listagem por oportunidade,
+     * CA-20/#133 — uma designação de fase que o gestor não controla bloqueia
+     * o lote inteiro com 403, sem ampliar acesso).
+     */
+    function POST_bulkAutoApply($data = null)
+    {
+        $this->requireAuthentication();
+        $this->assertFeatureEnabled();
+
+        $app = App::i();
+
+        if (is_null($data)) {
+            $data = $this->postData;
+        }
+
+        $ids = $this->extractBulkIds($data);
+
+        if (!$ids) {
+            $this->errorJson(i::__('Informe ao menos um ID de designação no corpo da requisição ({"ids": [...]}).'), 400);
+        }
+
+        $updated = [];
+        $skipped = [];
+
+        $app->em->beginTransaction();
+
+        try {
+            foreach ($ids as $id) {
+                /** @var ReviewEntity|null $review */
+                $review = $app->repo(ReviewEntity::class)->find($id);
+
+                if (!$review) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('designação inexistente')];
+                    continue;
+                }
+
+                // Âncora de permissão: fase principal da inscrição da designação.
+                // checkPermission lança PermissionDenied (403 global) sem
+                // ampliar acesso — deliberado para lote multi-oportunidade.
+                $review->registration->opportunity->checkPermission('@control');
+
+                if (!$review->isActive()) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('correção já enviada — use a reabertura para gestionar a autoaplicação')];
+                    continue;
+                }
+
+                if ($review->correctionType === ReviewEntity::CORRECTION_TYPE_RECORD) {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('tipo de correção "somente registro" nunca autoaplica')];
+                    continue;
+                }
+
+                if (ResultFormatter::methodForOpportunity($review->registration->opportunity) === 'technical') {
+                    $skipped[] = ['id' => $id, 'reason' => i::__('método técnico mantém a classificação como aplicação manual do gestor')];
+                    continue;
+                }
+
+                if ($review->autoApply) {
+                    // Idempotente: já marcada entra na contagem sem novo save
+                    // (evita revisão vazia da designação).
+                    $updated[] = $id;
+                    continue;
+                }
+
+                $review->autoApply = true;
+                $review->save(true);
+                $updated[] = $id;
+            }
+
+            $app->em->commit();
+        } catch (\Throwable $e) {
+            $app->em->rollback();
+            throw $e;
+        }
+
+        $this->json([
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'counts' => [
+                'marked' => count($updated),
+                'skipped' => count($skipped),
+            ],
+        ]);
+    }
+
     // ============================================================ //
     // Helpers
     // ============================================================ //
@@ -387,12 +503,80 @@ class RegistrationAppealReview extends EntityController
         );
 
         if (!$eligible_ids) {
-            $this->errorJson(i::__('Esta avaliação não admite designação de correção: exige fase principal com método técnico e fase de recurso ativa com Comissão de Recursos.'), 400);
+            // CA-20 (#133): elegibilidade é agnóstica de método (desde F7/#49);
+            // a condição real é estrutural — sem EMC na fase principal ou sem
+            // fase de recurso ativa com avaliação configurada (entities/RegistrationAppealReview::eligibleCorrectors).
+            $this->errorJson(i::__('Esta avaliação não admite designação de correção: exige fase principal com avaliação configurada e fase de recurso ativa. A Comissão de Recursos amplia os corretores elegíveis; sem comitê cadastrado, apenas o dono da avaliação original pode ser designado.'), 400);
         }
 
         if (!in_array((int) $corrector->id, $eligible_ids, true)) {
             $this->errorJson(i::__('Corretor inelegível para esta avaliação (CA-3): apenas o dono da avaliação original ou membros da Comissão de Recursos podem ser designados.'), 400);
         }
+    }
+
+    /**
+     * Normaliza o flag de autoaplicação (R06/#134 — CA-21) pelas regras de
+     * contorno do design:
+     * - D3: correction_type=record NUNCA autoaplica (força false);
+     * - D2: método técnico da fase principal excluído por construção (força
+     *   false — o modal não oferece o checkbox e o core é no-op; gravar o
+     *   flag criaria uma designação que "parece aplicar" e não aplica).
+     *
+     * @param string|null $correction_type Tipo efetivo (payload) quando difere
+     *   do vigente na entidade — o guard roda antes do core aplicar campos.
+     */
+    private function normalizeAutoApply(ReviewEntity $review, bool $requested, ?string $correction_type = null): bool
+    {
+        if (!$requested) {
+            return false;
+        }
+
+        $correction_type ??= $review->correctionType;
+
+        if ($correction_type === ReviewEntity::CORRECTION_TYPE_RECORD) {
+            return false;
+        }
+
+        if (ResultFormatter::methodForOpportunity($review->registration->opportunity) === 'technical') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * IDs de designação do corpo do lote (POST_bulkAutoApply): aceita
+     * {ids: [...]}, array cru de ids/objetos com {id} ou string separada por
+     * vírgula. Sempre únicos e > 0.
+     *
+     * @return int[]
+     */
+    private function extractBulkIds(mixed $data): array
+    {
+        $raw = $data['ids'] ?? $data ?? null;
+
+        if (is_string($raw)) {
+            $raw = array_map('trim', explode(',', $raw));
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        // Corpo {ids: {}} ou lista associativa: sem ids utilizáveis.
+        if ($raw !== [] && !array_is_list($raw)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($raw as $value) {
+            $id = $this->resolveIdParam($value);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+
+        return array_keys($ids);
     }
 
     /**
@@ -446,6 +630,39 @@ class RegistrationAppealReview extends EntityController
             if (!in_array((string) $data['correctionType'], ReviewEntity::getCorrectionTypes(), true)) {
                 $this->errorJson(sprintf(i::__('Tipo de correção inválido (%s). Use "official" ou "record".'), (string) $data['correctionType']), 400);
             }
+
+            // D3: migração para "somente registro" desliga a autoaplicação —
+            // designação record nunca autoaplica, ainda que o flag vigente
+            // tenha sido gravado antes da troca de tipo.
+            if ((string) $data['correctionType'] === ReviewEntity::CORRECTION_TYPE_RECORD && $review->autoApply) {
+                $review->autoApply = false;
+            }
+        }
+
+        /*
+         * R06 (#134) — CA-21: autoaplicação mutável somente em designação NÃO
+         * enviada — correção enviada já produziu (ou não) o efeito; mudar o
+         * flag depois do envio é enganoso. STATUS_REOPENED (POST_reopen)
+         * reabilita a gestão, coerente com o ciclo designado/rascunho/reaberto.
+         */
+        if (array_key_exists('autoApply', $data)) {
+            if ((int) $review->status === ReviewEntity::STATUS_SENT) {
+                $this->errorJson(i::__('A autoaplicação não pode ser alterada em correção já enviada. Reabra a correção para gestionar o flag.'), 400);
+            }
+
+            // O tipo efetivo é o do payload (o core só aplica correctionType
+            // depois do guard): PATCH combinado {autoApply, correctionType}
+            // precisa validar o flag contra o tipo RESULTANTE.
+            $effective_type = isset($data['correctionType'])
+                ? (string) $data['correctionType']
+                : $review->correctionType;
+
+            $review->autoApply = $this->normalizeAutoApply(
+                $review,
+                filter_var($data['autoApply'], FILTER_VALIDATE_BOOL),
+                $effective_type
+            );
+            unset($data['autoApply']);
         }
 
         // F6: array_key_exists (não isset) para que releasedScope null LIMPE
@@ -514,6 +731,110 @@ class RegistrationAppealReview extends EntityController
         $registration->opportunity->checkPermission('@control');
 
         return $registration;
+    }
+
+    /**
+     * CA-20 (#133): escopo por oportunidade na listagem de designações.
+     *
+     * Aceita o ID da fase principal (ou da oportunidade raiz, cobrindo suas
+     * fases) ou o ID da fase de recurso. A âncora de permissão é sempre a
+     * FASE PRINCIPAL — o mesmo `@control` do caminho por inscrição, sem
+     * ampliação (quem só controla a fase de recurso não ganha listagem).
+     * O resultado é forçado às designações das fases de recurso em escopo
+     * (filtro `appealPhase` por cima de qualquer filtro enviado), seguindo o
+     * mapeamento recurso → fase principal do módulo (metadado `appealPhase`).
+     */
+    private function applyOpportunityScopeFromQuery(): void
+    {
+        $app = App::i();
+
+        if ($this->queryParamIsPresent('registration')) {
+            $this->errorJson(i::__('Informe apenas um dos parâmetros: registration (listagem por inscrição) ou opportunity (listagem por oportunidade).'), 400);
+        }
+
+        $raw_value = trim((string) ($this->getData['opportunity'] ?? ''));
+
+        if (!preg_match('/\d+/', $raw_value, $matches)) {
+            $this->errorJson(i::__('O parâmetro opportunity (ID da oportunidade) é inválido.'), 400);
+        }
+
+        /** @var Opportunity|null $opportunity */
+        $opportunity = $app->repo('Opportunity')->find((int) $matches[0]);
+
+        if (!$opportunity) {
+            $this->errorJson(sprintf(i::__('Não existe oportunidade com o ID %s.'), $matches[0]), 404);
+        }
+
+        $appeal_phases = [];
+
+        if ($opportunity->isAppealPhase || $opportunity->status === Opportunity::STATUS_APPEAL_PHASE) {
+            // Fase de recurso informada: âncora e escopo pela fase principal (parent).
+            $main_phase = $opportunity->parent;
+            $appeal_phases = [$opportunity];
+        } else {
+            // Fase principal (ou raiz): fases de recurso da própria e de suas fases.
+            $main_phase = $opportunity;
+
+            foreach ($this->phasesInOpportunityScope($opportunity) as $phase) {
+                $appeal = $phase->appealPhase;
+                if ($appeal instanceof Opportunity) {
+                    $appeal_phases[] = $appeal;
+                }
+            }
+        }
+
+        if (!$main_phase) {
+            $this->errorJson(i::__('A fase de recurso informada não está vinculada a uma fase principal.'), 404);
+        }
+
+        $main_phase->checkPermission('@control');
+
+        $appeal_ids = [];
+        foreach ($appeal_phases as $appeal) {
+            $appeal_ids[(int) $appeal->id] = true;
+        }
+
+        // IN(-1) nunca casa (sequências começam em 1): oportunidade sem fase
+        // de recurso não tem designações a listar — lista vazia, não erro.
+        $this->getData['appealPhase'] = $appeal_ids
+            ? 'IN(' . implode(',', array_keys($appeal_ids)) . ')'
+            : 'IN(-1)';
+        unset($this->getData['opportunity'], $this->getData['registration']);
+    }
+
+    /**
+     * A oportunidade informada e suas fases (filhas diretas marcadas como
+     * opportunity phase). Sem filtro de status — mais simples e completo que
+     * OpportunityPhases::getPhases (que restringe por status e refaz a
+     * checagem de @control): o acesso aqui já está ancorado no checkPermission
+     * da fase principal, e a ausência de filtro só afeta a completude da
+     * listagem do gestor, nunca quem pode vê-la.
+     *
+     * @return Opportunity[]
+     */
+    private function phasesInOpportunityScope(Opportunity $opportunity): array
+    {
+        $app = App::i();
+
+        $phases = [$opportunity];
+
+        $children = $app->repo('Opportunity')->findBy(['parent' => $opportunity], ['id' => 'ASC']);
+
+        foreach ($children as $child) {
+            if ($child instanceof Opportunity && $child->isOpportunityPhase) {
+                $phases[] = $child;
+            }
+        }
+
+        return $phases;
+    }
+
+    /**
+     * Parâmetro de query presente e não-vazio (trim), no $this->getData da action.
+     */
+    private function queryParamIsPresent(string $key): bool
+    {
+        return trim((string) ($this->getData[$key] ?? '')) !== '';
     }
 
     /**

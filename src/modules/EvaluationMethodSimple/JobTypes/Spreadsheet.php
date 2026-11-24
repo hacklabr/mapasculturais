@@ -5,6 +5,7 @@ use MapasCulturais\App;
 use MapasCulturais\Entities\Job;
 use MapasCulturais\Entities\RegistrationEvaluation;
 use MapasCulturais\i;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use Spreadsheets\EvaluationsSpreadsheetJob;
 
 class Spreadsheet extends EvaluationsSpreadsheetJob
@@ -30,6 +31,10 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
             $sub_header['obs'] = i::__('Observações');
         }
 
+        // R06 (#131) — CA-18: colunas de correção por slot quando há correções
+        // de recurso na fase (rótulos do próprio método — status no simples).
+        $sub_header += $this->appealReviewSubHeader($job);
+
         if (!$sub_header) {
             return ['header' => [], 'subHeader' => []];
         }
@@ -53,7 +58,7 @@ class Spreadsheet extends EvaluationsSpreadsheetJob
                 'result' => $evaluation['evaluation']['resultString'],
                 'status' => $this->evaluationStatusName($evaluation['evaluation']['status'] ?? null),
                 'obs' => $evaluation['evaluation']['evaluationData']['obs']
-            ];
+            ] + $this->appealReviewColumns($evaluation['evaluation'] ?? null);
         }
         
         return $result;

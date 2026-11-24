@@ -7,6 +7,7 @@ use MapasCulturais\Entities\Job;
 use MapasCulturais\Entities\Registration;
 use MapasCulturais\Entities\Opportunity;
 use MapasCulturais\i;
+use OpportunityAppealPhase\AppealReview\ResultFormatter;
 use \Spreadsheets\FieldParser;
 use Spreadsheets\SpreadsheetJob;
 
@@ -46,6 +47,30 @@ class Registrations extends SpreadsheetJob
             $line = self::_formatAddressListItem($address);
             if ($line !== '') {
                 $lines[] = $line;
+            }
+        }
+
+        return implode(' || ', $lines);
+    }
+
+    private static function _formatCustomTableForSpreadsheet(array $columns, array $rows): string {
+        $lines = [];
+
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $cells = [];
+            $has_values = false;
+
+            foreach ($columns as $index => $column) {
+                $column = (array) $column;
+                $value = $row["col{$index}"] ?? '';
+                $value = is_scalar($value) ? (string) $value : '';
+                $has_values = $has_values || $value !== '';
+                $cells[] = ($column['name'] ?? '') . ': ' . $value;
+            }
+
+            if ($has_values) {
+                $lines[] = implode(' | ', $cells);
             }
         }
 
@@ -246,20 +271,30 @@ class Registrations extends SpreadsheetJob
                 continue;
             }
 
-            // F4 (#20) — CA-11: colunas computadas de nota por inscrição
-            // (módulo OpportunityAppealPhase); rótulo amigável na planilha.
+            // F4 (#20) — CA-11 / R06 (#131) — CA-18: colunas computadas de
+            // resultado por inscrição (módulo OpportunityAppealPhase); rótulo
+            // por método da fonte única (ResultFormatter — técnico mantém o
+            // trio de médias; demais métodos: resultado original/corrigido e
+            // SEM coluna de diferença, que não é registrada nem exportada).
+            $score_labels = ResultFormatter::headerLabels(
+                ResultFormatter::methodForOpportunity($job->owner),
+                'export'
+            );
+
             if($property == 'averageOriginalScore') {
-                $header[$property] = i::__('Média original (antes das correções de recurso)');
+                $header[$property] = $score_labels['original'];
                 continue;
             }
 
             if($property == 'averageCorrectedScore') {
-                $header[$property] = i::__('Média corrigida (vigente)');
+                $header[$property] = $score_labels['corrected'];
                 continue;
             }
 
             if($property == 'scoreDifference') {
-                $header[$property] = i::__('Diferença (média corrigida - média original)');
+                if ($score_labels['difference'] !== null) {
+                    $header[$property] = $score_labels['difference'];
+                }
                 continue;
             }
 
@@ -568,6 +603,13 @@ class Registrations extends SpreadsheetJob
                         $addresses = json_decode(json_encode($entity[$field->fieldName]), true);
                         $entity[$field->fieldName] = self::_formatAddressesForSpreadsheet(
                             is_array($addresses) ? $addresses : []
+                        );
+                    }
+
+                    if ($field->fieldType === 'custom-table') {
+                        $entity[$field->fieldName] = self::_formatCustomTableForSpreadsheet(
+                            (array) ($field->config['columns'] ?? []),
+                            (array) ($entity[$field->fieldName] ?? [])
                         );
                     }
 

@@ -2475,7 +2475,8 @@ $$
                 return $value;
             }
 
-            return json_encode(unserialize($value));
+            // Config fields are arrays/scalars — never instantiate objects (CWE-502).
+            return json_encode(unserialize($value, ['allowed_classes' => false]));
         };
 
         foreach($fields as $i => $field) {
@@ -3727,6 +3728,16 @@ $$
 
         // Índice único parcial: impede duas designações ativas (designado/rascunho/reaberto) para o mesmo slot.
         __exec("CREATE UNIQUE INDEX idx_registration_appeal_review_active_slot ON registration_appeal_review (original_evaluation_id) WHERE status IN (0, 1, 3);");
+    },
+
+    'adiciona auto_apply na registration_appeal_review' => function () {
+        // R06 (#134) — CA-21: flag de autoaplicação do resultado na designação.
+        // PG 11+: ADD COLUMN com DEFAULT constante é metadado-only (não reescreve a tabela);
+        // NOT NULL DEFAULT FALSE mantém designações legadas semanticamente "sem
+        // autoaplicação" — exatamente o comportamento anterior, sem backfill.
+        if (!__column_exists('registration_appeal_review', 'auto_apply')) {
+            __exec("ALTER TABLE registration_appeal_review ADD COLUMN auto_apply BOOLEAN NOT NULL DEFAULT FALSE");
+        }
     },
 
     'Corrige dados legados das etapas de inscrição das oportunidades (campos e anexos sem etapa e etapas vazias duplicadas)' => function () {

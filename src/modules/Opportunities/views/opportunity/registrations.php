@@ -14,6 +14,7 @@ $this->import('
     entity-actions
     mc-breadcrumb
     mc-link
+    opportunity-appeal-bulk-auto-apply
     opportunity-appeal-correction-assignment
     opportunity-form-builder
     opportunity-header
@@ -37,4 +38,7 @@ $this->import('
 
     <?php /* F1 (#17): modal de designação de correção (F2), aberto por evento global pela tabela acima; renderizado uma única vez na view (o init.php dele também injeta o contexto de @control/fase de recurso consumido pela coluna) */ ?>
     <opportunity-appeal-correction-assignment></opportunity-appeal-correction-assignment>
+
+    <?php /* R06 (#134) — CA-21 (override 2026-11-18): modal de autoaplicação em lote, aberto por evento global pelo botão "Autoaplicar nas designações de correção" na área de ações da tabela acima (rótulo ajustado no QA 2026-11-23); renderizado uma única vez na view. Reutiliza o config de contexto injetado pelo init do modal de designação (appealContexts/mainPhaseMethods/evaluators). */ ?>
+    <opportunity-appeal-bulk-auto-apply></opportunity-appeal-bulk-auto-apply>
 </div>

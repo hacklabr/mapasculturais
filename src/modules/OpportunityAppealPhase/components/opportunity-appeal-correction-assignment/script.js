@@ -92,6 +92,22 @@ app.component('opportunity-appeal-correction-assignment', {
                 : null;
         },
 
+        /**
+         * R06 (#134) — CA-21: slug do método da fase principal (injetado no
+         * init.php). O checkbox de autoaplicação só existe fora do técnico
+         * (contorno D2: classificação técnica é aplicação manual do gestor).
+         */
+        mainPhaseMethod() {
+            const methods = this.config.mainPhaseMethods || {};
+            return this.opportunityId != null
+                ? methods[this.opportunityId] ?? null
+                : null;
+        },
+
+        autoApplyAvailable() {
+            return ['simple', 'documentary', 'qualification'].includes(this.mainPhaseMethod);
+        },
+
         hasCriteriaSelector() {
             const catalog = this.criteriaCatalog;
             return !!catalog
@@ -264,7 +280,10 @@ app.component('opportunity-appeal-correction-assignment', {
         async fetchSlots() {
             const api = new API('registrationevaluation');
             const evaluations = await api.fetch('find', {
-                '@select': 'id,user,status,result,resultString,registration.{id,number}',
+                // R06 (#131) — CA-18: originalScore/correctedScore enriquecidos
+                // pelo módulo OpportunityAppealPhase (rótulos do método fora
+                // do técnico) para exibir "original → corrigida" por slot.
+                '@select': 'id,user,status,result,resultString,originalScore,correctedScore,registration.{id,number}',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { raw: true, rawProcessor: data => data });
@@ -276,6 +295,8 @@ app.component('opportunity-appeal-correction-assignment', {
                 status: evaluation.status,
                 result: evaluation.result,
                 resultString: evaluation.resultString,
+                originalScore: evaluation.originalScore ?? null,
+                correctedScore: evaluation.correctedScore ?? null,
                 registration: evaluation.registration,
                 checked: false,
                 correctorUserId: null,
@@ -288,6 +309,8 @@ app.component('opportunity-appeal-correction-assignment', {
                 // CA-4: visibilidade no ambiente do corretor (defaults da designação)
                 showAppealOpinion: true,
                 showOriginalValuerName: true,
+                // R06 (#134) — CA-21: default explícito e previsível (desmarcado)
+                autoApply: this.config.autoApplyDefault === true,
                 endsAt: null,
                 endsAtTimeSet: false,
                 endsAtKey: 0,
@@ -320,7 +343,7 @@ app.component('opportunity-appeal-correction-assignment', {
 
             const api = new API('registrationappealreview');
             const reviews = await api.fetch('find', {
-                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp,correctorUser,releasedScope',
+                '@select': 'id,originalEvaluation.id,status,correctionType,endsAt,sentTimestamp,correctorUser,releasedScope,autoApply',
                 'registration': `EQ(${this.registrationId})`,
                 '@order': 'id ASC',
             }, { raw: true, rawProcessor: data => data });
@@ -337,6 +360,7 @@ app.component('opportunity-appeal-correction-assignment', {
                 sentTimestamp: review.sentTimestamp,
                 correctorUserId: this.normalizeId(review.correctorUser),
                 releasedScope: this.normalizeScope(review.releasedScope),
+                autoApply: review.autoApply === true || review.autoApply === 'true' || review.autoApply === 1,
             }));
         },
 
@@ -1088,6 +1112,23 @@ app.component('opportunity-appeal-correction-assignment', {
         },
 
         /**
+         * R06 (#131) — CA-18: resultado do slot no vocabulário do método.
+         * Com correção aplicada (original ≠ corrigida), exibe o par
+         * "original → corrigida" (número no técnico; rótulo do método —
+         * Selecionada, Válida, Habilitado... — nos demais).
+         */
+        slotResult(slot) {
+            const original = slot?.originalScore ?? null;
+            const corrected = slot?.correctedScore ?? null;
+
+            if (original !== null && corrected !== null && String(original) !== String(corrected)) {
+                return `${original} → ${corrected}`;
+            }
+
+            return slot?.resultString || '-';
+        },
+
+        /**
          * Cria 1 RegistrationAppealReview por nota marcada, via API canônica
          * da entidade. Defaults: status=DESIGNATED, correction_type=official,
          * prazo e escopo livres (CA-4 fica para a onda de parametrização).
@@ -1176,6 +1217,9 @@ app.component('opportunity-appeal-correction-assignment', {
                 correctorUser: this.normalizeId(slot.correctorUserId),
                 status: this.config.statusDesignated ?? 0,
                 correctionType: this.config.correctionTypeDefault || 'official',
+                // R06 (#134) — CA-21: autoaplicação (só enviada como true em
+                // método não-técnico; o backend revalida D2/D3).
+                autoApply: this.autoApplyAvailable && !!slot.autoApply,
                 // F6 + CA-4: critérios (se restritos) + visibilidade do ambiente
                 releasedScope: this.scopePayloadFrom(
                     slot.scopeCriteria,
@@ -1188,6 +1232,41 @@ app.component('opportunity-appeal-correction-assignment', {
                 // null = sem prazo (corretor pode corrigir a qualquer momento)
                 endsAt: this.toBackendDate(slot.endsAt),
             };
+        },
+
+        /**
+         * R06 (#134) — CA-21: alterna a autoaplicação da designação ATIVA do
+         * slot (PATCH /registrationappealreview/single/{id} com {autoApply}).
+         * Backend rejeita (400) em designação enviada — a UI só oferece o
+         * botão em designações gerenciáveis (canManageReview).
+         */
+        async toggleAutoApply(slot) {
+            const review = this.activeReviewForSlot(slot);
+            if (!review || !this.canManageReview(review) || !this.autoApplyAvailable) {
+                return;
+            }
+
+            const messages = useMessages();
+            slot.togglingAutoApply = true;
+
+            const api = new API('registrationappealreview');
+            const url = Utils.createUrl('registrationappealreview', 'single', { id: review.id });
+
+            try {
+                const response = await api.PATCH(url, { autoApply: !review.autoApply });
+
+                if (!response.ok) {
+                    throw await response.json().catch(() => ({}));
+                }
+
+                messages.success(this.text('auto apply updated'));
+                await this.fetchReviews();
+            } catch (error) {
+                console.error('opportunity-appeal-correction-assignment:toggleAutoApply', error);
+                messages.error(this.backendErrorMessage(error) || this.text('auto apply update error'));
+            } finally {
+                slot.togglingAutoApply = false;
+            }
         },
 
         normalizeId(value) {

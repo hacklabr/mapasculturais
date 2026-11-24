@@ -84,7 +84,7 @@ class Service
             $app->disableAccessControl();
 
             if ($is_official) {
-                $this->applyOfficialCorrection($slot, $merged, $revision_message);
+                $this->applyOfficialCorrection($slot, $review, $merged, $revision_message);
             } else {
                 $this->applyRecordCorrection($slot, $merged, $revision_message);
             }
@@ -151,7 +151,12 @@ class Service
         return $review;
     }
 
-    private function applyOfficialCorrection(RegistrationEvaluation $slot, array $merged, string $revision_message): void
+    /**
+     * Aplica a correção oficial: slot in-place + reconsolidação e, quando a
+     * designação tem autoApply (R06/#134 — CA-21), aplica o resultado
+     * consolidado no status da inscrição pelo caminho canônico do core.
+     */
+    private function applyOfficialCorrection(RegistrationEvaluation $slot, RegistrationAppealReview $review, array $merged, string $revision_message): void
     {
         $app = App::i();
 
@@ -166,6 +171,37 @@ class Service
 
         $registration = $slot->registration;
         $registration->consolidateResult(true, $slot);
+
+        /*
+         * R06 (#134) — CA-21: autoaplicação do resultado no envio da correção.
+         *
+         * D1 (design §0): reuso do caminho canônico do core — mesma chamada que
+         * a aplicação manual do gestor percorre (`send:after` de avaliação,
+         * Opportunities/Module.php), sem segundo mecanismo de aplicação.
+         * D2: no método técnico o próprio core é no-op (`useAutoApplication()`
+         * false), mantendo a classificação como aplicação manual.
+         * A chamada fica DENTRO da transação de applyCorrection: correção e
+         * eventual mudança de status são atômicas. Os hooks canônicos de status
+         * (selos, notificações, requalificação entre fases) disparam exatamente
+         * como na aplicação manual; os hooks de recurso do módulo ficam
+         * naturalmente silenciosos (alvo é a inscrição da fase principal).
+         */
+        if ($review->autoApply) {
+            $status_before = $registration->status;
+
+            $evaluation_method = $registration->opportunity->evaluationMethod;
+            if ($evaluation_method) {
+                $evaluation_method->applyConsolidatedResult($registration);
+            }
+
+            if ($registration->status != $status_before) {
+                // Auditoria: registra na revisão do slot que o resultado foi autoaplicado.
+                $this->setLastRevisionMessage(
+                    $slot,
+                    $revision_message . ' ' . i::__('(resultado consolidado autoaplicado no status da inscrição da fase principal)')
+                );
+            }
+        }
 
         $app->enqueueEntityToPCacheRecreation($registration);
         $app->persistPCachePendingQueue();
@@ -259,7 +295,12 @@ class Service
      * evaluationData e o cálculo do resultado:
      * - technical: critérios (ids) → pontuação ponderada;
      * - documentary: fieldName/fileGroupName → {evaluation, obs} por campo;
-     * - simple: resultado global (status) + obs.
+     * - simple: resultado global (status) + obs;
+     * - qualification: critério → array ['valid'|'invalid'|'not-applicable',
+     *   motivos...] + `{criterio}_reason` + obs por seção (`{sectionId}`) —
+     *   o resultado ('valid'/'invalid') é calculado pelo próprio método em
+     *   setEvaluationData (getEvaluationResult lê nonEliminatory/
+     *   maxNonEliminatory do EMC).
      */
     private function assertEvaluationMethodResolvable(RegistrationEvaluation $slot): void
     {
@@ -276,7 +317,11 @@ class Service
      *
      * Genérico por método (F7): as chaves são as do evaluationData — critérios
      * (technical), fieldName/fileGroupName (documentary; o obs por campo viaja
-     * DENTRO do objeto do campo) ou status/obs (simple).
+     * DENTRO do objeto do campo) ou status/obs (simple). Habilitação
+     * documental (qualification) libera junto ao critério as chaves
+     * companheiras `{criterio}_reason` (motivo do "Outros") e `{sectionId}`
+     * (observações/parecer da seção) — mesmo shape do
+     * qualification-evaluation-form.
      */
     private function mergeWithinReleasedScope(RegistrationEvaluation $slot, RegistrationAppealReview $review, array $incoming): array
     {
@@ -287,12 +332,14 @@ class Service
             return array_merge($current, $incoming);
         }
 
+        $allowed = array_merge($scope, $this->getQualificationCompanionKeys($slot, $scope));
+
         $out_of_scope = [];
         foreach ($incoming as $key => $value) {
             if ($key === 'obs' || $key === 'viability') {
                 continue;
             }
-            if (!in_array((string) $key, $scope, true)) {
+            if (!in_array((string) $key, $allowed, true)) {
                 $current_value = $current[$key] ?? null;
                 if (json_encode($value) !== json_encode($current_value)) {
                     $out_of_scope[] = $key;
@@ -307,12 +354,48 @@ class Service
         }
 
         foreach ($incoming as $key => $value) {
-            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $scope, true)) {
+            if ($key === 'obs' || $key === 'viability' || in_array((string) $key, $allowed, true)) {
                 $current[$key] = $value;
             }
         }
 
         return $current;
+    }
+
+    /**
+     * Chaves companheiras da habilitação documental liberadas junto ao
+     * critério em escopo: `{criterio}_reason` e `{sectionId}` (seções do EMC
+     * que contêm critérios liberados). Vazio para os demais métodos — o
+     * escopo de técnico/documental/simples não é ampliado.
+     *
+     * @param string[] $scope
+     * @return string[]
+     */
+    private function getQualificationCompanionKeys(RegistrationEvaluation $slot, array $scope): array
+    {
+        $emc = $slot->registration->opportunity->evaluationMethodConfiguration;
+        if (!$emc || (string) $emc->type->id !== 'qualification') {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($scope as $id) {
+            $keys[] = $id . '_reason';
+        }
+
+        $criteria = $emc->criteria ?? [];
+        if (is_string($criteria)) {
+            $criteria = json_decode($criteria);
+        }
+
+        foreach ((array) $criteria as $criterion) {
+            $criterion = (object) $criterion;
+            if (isset($criterion->id, $criterion->sid) && in_array((string) $criterion->id, $scope, true)) {
+                $keys[] = (string) $criterion->sid;
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /**

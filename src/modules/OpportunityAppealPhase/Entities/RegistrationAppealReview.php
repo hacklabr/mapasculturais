@@ -25,6 +25,7 @@ use MapasCulturais\Entities\User;
  * @property int $status
  * @property string $correctionType
  * @property object $releasedScope
+ * @property bool $autoApply
  * @property DateTime $startsAt
  * @property DateTime $endsAt
  * @property object $originalValue
@@ -130,6 +131,18 @@ class RegistrationAppealReview extends Entity
      * @ORM\Column(name="released_scope", type="json", nullable=true)
      */
     protected $releasedScope;
+
+    /**
+     * R06 (#134) — CA-21: autoaplicar o resultado consolidado no status da
+     * inscrição da fase principal quando o corretor enviar a correção.
+     * Somente significativo para correction_type=official em método
+     * não-técnico (contornos D2/D3 do design da rodada).
+     *
+     * @var bool
+     *
+     * @ORM\Column(name="auto_apply", type="boolean", nullable=false)
+     */
+    protected bool $autoApply = false;
 
     /**
      * @var DateTime
@@ -270,6 +283,8 @@ class RegistrationAppealReview extends Entity
 
         $push_user($slot->user);
 
+        // Intencional (CA-20/#133): sem Comissão de Recursos cadastrada na fase
+        // de recurso, apenas o dono do slot é corretor elegível — não é bug.
         foreach ($this->appealPhase->evaluationMethodConfiguration->getCommittee(false) as $agent) {
             $push_user($agent->user);
         }
@@ -305,6 +320,16 @@ class RegistrationAppealReview extends Entity
     public function setReleasedScope($value): void
     {
         $this->releasedScope = $value;
+    }
+
+    public function setAutoApply(bool $value): void
+    {
+        $this->autoApply = $value;
+    }
+
+    public function getAutoApply(): bool
+    {
+        return $this->autoApply;
     }
 
     public function setOriginalValue($value): void

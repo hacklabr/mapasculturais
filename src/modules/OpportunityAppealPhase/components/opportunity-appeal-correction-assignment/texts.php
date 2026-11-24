@@ -89,6 +89,16 @@ $texts = [
     'deadline until' => i::__('O corretor poderá corrigir até'),
     'no deadline hint' => i::__('Sem prazo: o corretor pode corrigir a qualquer momento.'),
     'endpoint unavailable' => i::__('A criação e o acompanhamento de designações estão temporariamente indisponíveis: a API da entidade de designação (RegistrationAppealReview) ainda não está registrada no backend.'),
+
+    // R06 (#134) — CA-21: autoaplicação do resultado
+    'auto apply result' => i::__('Autoaplicar o resultado ao enviar a correção'),
+    'auto apply hint' => i::__('O resultado consolidado será aplicado ao status da inscrição quando o corretor enviar a correção.'),
+    'auto apply enabled' => i::__('Autoaplicação do resultado: ativada'),
+    'auto apply disabled' => i::__('Autoaplicação do resultado: desativada'),
+    'enable auto apply' => i::__('Ativar autoaplicação'),
+    'disable auto apply' => i::__('Desativar autoaplicação'),
+    'auto apply updated' => i::__('Autoaplicação atualizada.'),
+    'auto apply update error' => i::__('Não foi possível alterar a autoaplicação.'),
 ];
 
 $app->applyHook('component(opportunity-appeal-correction-assignment).texts', [&$texts]);

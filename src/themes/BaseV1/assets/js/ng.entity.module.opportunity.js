@@ -2615,7 +2615,7 @@ module.controller('RegistrationFieldsController', ['$scope', '$rootScope', '$int
             }
         }
 
-        if(MapasCulturais.entity.canUserEvaluate || MapasCulturais?.viewUserEvaluation){
+        if(MapasCulturais.entity.canUserEvaluate || MapasCulturais?.viewUserEvaluation || MapasCulturais?.applyEvaluationFieldsFilter){
             if(MapasCulturais.opportunityControl && result) {
                 result = true;
             } else if(result && !$scope.isAvaliableEvaluationFields(field)){
@@ -2640,11 +2640,9 @@ module.controller('RegistrationFieldsController', ['$scope', '$rootScope', '$int
     };
 
     $scope.isAvaliableEvaluationFields = function(field){
-        if($scope.data.avaliableEvaluationFields && $scope.data.avaliableEvaluationFields[$scope.getFieldNameString(field)] === "true"){
-            return true;
-        }
+        var value = $scope.data.avaliableEvaluationFields ? $scope.data.avaliableEvaluationFields[$scope.getFieldNameString(field)] : null;
 
-        return false;
+        return value === true || value === "true";
     }
 
     $scope.requiredField = function(field) {

@@ -52,6 +52,16 @@ $entity = $this->controller->requestedEntity;
                         <h4 class="bold"><?= i::__('Ações:') ?></h4>
                         <div class="opportunity-registration-table__actions-buttons">
                         <?php $this->applyTemplateHook('registration-list-actions-entity-table', 'begin', ['entity' => $entity]); ?>
+                            <?php /* R06 (#134) — CA-21: override 2026-11-18 (feedback do teste manual do PR #137): a seleção em lote saiu da tabela (a coluna de seleção quebrava o layout — cabeçalho duplicado) e virou botão na área de ações + modal de seleção. Gates do botão: fase de recurso com gestor @control e método não-técnico (mesma config do init do modal de designação). QA 2026-11-23: rótulo renomeado para deixar claro que a ação MARCA autoaplicação nas designações (não aplica o resultado direto, como o botão "Aplicar resultados das avaliações") e mesmas classes dos botões vizinhos (button button--primary, sem button--md) para altura idêntica. */ ?>
+                            <button
+                                v-if="appealBulkAutoApplyEnabled"
+                                class="button button--primary"
+                                title="<?= i::esc_attr__('Abrir seleção em lote para marcar autoaplicação nas designações de correção') ?>"
+                                aria-label="<?= i::esc_attr__('Abrir seleção em lote para marcar autoaplicação nas designações de correção') ?>"
+                                @click="openAppealBulkAutoApply()">
+
+                                <?= i::__('Autoaplicar nas designações de correção') ?>
+                            </button>
                             <mc-export-spreadsheet :owner="phase" endpoint="registrations" :params="{entityType: 'registration', '@select': spreadsheetQuery['@select'], '@order': spreadsheetQuery['@order'], query: spreadsheetQuery}" group="registrations-spreadsheets"></mc-export-spreadsheet>
                         <?php $this->applyTemplateHook('registration-list-actions-entity-table', 'end', ['entity' => $entity]); ?>
                         </div>
