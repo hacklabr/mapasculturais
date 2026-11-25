@@ -35,12 +35,10 @@ use MapasCulturais\Entities\User;
  * @property DateTime $createTimestamp
  * @property DateTime $sentTimestamp
  * @property DateTime $updateTimestamp
- *
- * @ORM\Table(name="registration_appeal_review")
- * @ORM\Entity
- * @ORM\entity(repositoryClass="MapasCulturais\Repository")
- * @ORM\HasLifecycleCallbacks
  */
+#[ORM\Table(name: "registration_appeal_review")]
+#[ORM\Entity(repositoryClass: "MapasCulturais\Repository")]
+#[ORM\HasLifecycleCallbacks]
 class RegistrationAppealReview extends Entity
 {
     const STATUS_DESIGNATED = 0;
@@ -53,83 +51,64 @@ class RegistrationAppealReview extends Entity
 
     /**
      * @var int
-     *
-     * @ORM\Column(name="id", type="integer", nullable=false)
-     * @ORM\Id
-     * @ORM\GeneratedValue(strategy="SEQUENCE")
-     * @ORM\SequenceGenerator(sequenceName="registration_appeal_review_id_seq", allocationSize=1, initialValue=1)
      */
+    #[ORM\Column(name: "id", type: "integer", nullable: false)]
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: "SEQUENCE")]
+    #[ORM\SequenceGenerator(sequenceName: "registration_appeal_review_id_seq", allocationSize: 1, initialValue: 1)]
     protected $id;
 
     /**
      * @var RegistrationEvaluation
-     *
-     * @ORM\ManyToOne(targetEntity="MapasCulturais\Entities\RegistrationEvaluation")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="original_evaluation_id", referencedColumnName="id", nullable=false, onDelete="CASCADE")
-     * })
      */
+    #[ORM\ManyToOne(targetEntity: "MapasCulturais\Entities\RegistrationEvaluation")]
+    #[ORM\JoinColumn(name: "original_evaluation_id", referencedColumnName: "id", nullable: false, onDelete: "CASCADE")]
     protected $originalEvaluation;
 
     /**
      * @var Registration
-     *
-     * @ORM\ManyToOne(targetEntity="MapasCulturais\Entities\Registration")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="registration_id", referencedColumnName="id", nullable=false, onDelete="CASCADE")
-     * })
      */
+    #[ORM\ManyToOne(targetEntity: "MapasCulturais\Entities\Registration")]
+    #[ORM\JoinColumn(name: "registration_id", referencedColumnName: "id", nullable: false, onDelete: "CASCADE")]
     protected $registration;
 
     /**
      * @var Opportunity
-     *
-     * @ORM\ManyToOne(targetEntity="MapasCulturais\Entities\Opportunity")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="appeal_phase_id", referencedColumnName="id", nullable=false, onDelete="CASCADE")
-     * })
      */
+    #[ORM\ManyToOne(targetEntity: "MapasCulturais\Entities\Opportunity")]
+    #[ORM\JoinColumn(name: "appeal_phase_id", referencedColumnName: "id", nullable: false, onDelete: "CASCADE")]
     protected $appealPhase;
 
     /**
      * @var User
-     *
-     * @ORM\ManyToOne(targetEntity="MapasCulturais\Entities\User")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="slot_owner_user_id", referencedColumnName="id", nullable=false, onDelete="CASCADE")
-     * })
      */
+    #[ORM\ManyToOne(targetEntity: "MapasCulturais\Entities\User")]
+    #[ORM\JoinColumn(name: "slot_owner_user_id", referencedColumnName: "id", nullable: false, onDelete: "CASCADE")]
     protected $slotOwnerUser;
 
     /**
      * @var User
-     *
-     * @ORM\ManyToOne(targetEntity="MapasCulturais\Entities\User")
-     * @ORM\JoinColumns({
-     *   @ORM\JoinColumn(name="corrector_user_id", referencedColumnName="id", nullable=false, onDelete="CASCADE")
-     * })
      */
+    #[ORM\ManyToOne(targetEntity: "MapasCulturais\Entities\User")]
+    #[ORM\JoinColumn(name: "corrector_user_id", referencedColumnName: "id", nullable: false, onDelete: "CASCADE")]
     protected $correctorUser;
 
     /**
      * @var int
-     *
-     * @ORM\Column(name="status", type="smallint", nullable=false)
      */
+    #[ORM\Column(name: "status", type: "smallint", nullable: false)]
     protected $status = self::STATUS_DESIGNATED;
 
     /**
      * @var string
-     *
-     * @ORM\Column(name="correction_type", type="string", length=20, nullable=false)
      */
+    #[ORM\Column(name: "correction_type", type: "string", length: 20, nullable: false)]
     protected $correctionType;
 
     /**
      * @var object
-     *
-     * @ORM\Column(name="released_scope", type="json", nullable=true)
      */
+    #[ORM\Column(name: "released_scope", type: "json", nullable: true)]
     protected $releasedScope;
 
     /**
@@ -139,72 +118,62 @@ class RegistrationAppealReview extends Entity
      * não-técnico (contornos D2/D3 do design da rodada).
      *
      * @var bool
-     *
-     * @ORM\Column(name="auto_apply", type="boolean", nullable=false)
      */
+    #[ORM\Column(name: "auto_apply", type: "boolean", nullable: false)]
     protected bool $autoApply = false;
 
     /**
      * @var DateTime
-     *
-     * @ORM\Column(name="starts_at", type="datetime", nullable=true)
      */
+    #[ORM\Column(name: "starts_at", type: "datetime", nullable: true)]
     protected $startsAt;
 
     /**
      * @var DateTime
-     *
-     * @ORM\Column(name="ends_at", type="datetime", nullable=true)
      */
+    #[ORM\Column(name: "ends_at", type: "datetime", nullable: true)]
     protected $endsAt;
 
     /**
      * @var object
-     *
-     * @ORM\Column(name="original_value", type="json", nullable=true)
      */
+    #[ORM\Column(name: "original_value", type: "json", nullable: true)]
     protected $originalValue;
 
     /**
      * @var object
-     *
-     * @ORM\Column(name="corrected_value", type="json", nullable=true)
      */
+    #[ORM\Column(name: "corrected_value", type: "json", nullable: true)]
     protected $correctedValue;
 
     /**
      * @var float
-     *
-     * @ORM\Column(name="original_score", type="float", nullable=true)
      */
+    #[ORM\Column(name: "original_score", type: "float", nullable: true)]
     protected $originalScore;
 
     /**
      * @var float
-     *
-     * @ORM\Column(name="corrected_score", type="float", nullable=true)
      */
+    #[ORM\Column(name: "corrected_score", type: "float", nullable: true)]
     protected $correctedScore;
 
     /**
      * @var DateTime
-     *
-     * @ORM\Column(name="create_timestamp", type="datetime", nullable=false)
      */
+    #[ORM\Column(name: "create_timestamp", type: "datetime", nullable: false)]
     protected $createTimestamp;
 
     /**
      * @var DateTime
-     *
-     * @ORM\Column(name="sent_timestamp", type="datetime", nullable=true)
      */
+    #[ORM\Column(name: "sent_timestamp", type: "datetime", nullable: true)]
     protected $sentTimestamp;
 
     /**
      * @var DateTime
-     *
-     * @ORM\Column(name="update_timestamp", type="datetime", nullable=true)
      */
+    #[ORM\Column(name: "update_timestamp", type: "datetime", nullable: true)]
     protected $updateTimestamp;
 
     /**
@@ -362,18 +331,18 @@ class RegistrationAppealReview extends Entity
     // Please do not change them.
     // ============================================================ //
 
-    /** @ORM\PrePersist */
+    #[ORM\PrePersist]
     public function prePersist($args = null){ parent::prePersist($args); }
-    /** @ORM\PostPersist */
+    #[ORM\PostPersist]
     public function postPersist($args = null){ parent::postPersist($args); }
 
-    /** @ORM\PreRemove */
+    #[ORM\PreRemove]
     public function preRemove($args = null){ parent::preRemove($args); }
-    /** @ORM\PostRemove */
+    #[ORM\PostRemove]
     public function postRemove($args = null){ parent::postRemove($args); }
 
-    /** @ORM\PreUpdate */
+    #[ORM\PreUpdate]
     public function preUpdate($args = null){ parent::preUpdate($args); }
-    /** @ORM\PostUpdate */
+    #[ORM\PostUpdate]
     public function postUpdate($args = null){ parent::postUpdate($args); }
 }
