@@ -25,7 +25,7 @@ $statuses_names = $opportunity->statusLabels ?: $opportunity->evaluationMethodCo
 
 foreach ($statuses_names as $status => $status_name) {
     if ((int) $status !== \MapasCulturais\Entities\Registration::STATUS_DRAFT) {
-        $status_list[] = ["status" => $status, "label" => $status_name];
+        $status_list[] = ["status" => (int) $status, "label" => $status_name];
     }
 }
 
@@ -37,6 +37,8 @@ $this->jsObject['config']['evaluation-method-qualification--apply'] = [
 ```
 
 Nota de divergência deliberada do molde: o Documentary usa `$opportunity->defaultStatuses` como fallback (rótulos genéricos com 2/8) e lista também 0 e 1 no frontend enquanto o backend aceita apenas `[0,2,3,8,10]` — inconsistência herdada que **não** será replicada. No Qualification o fallback é `$opportunity->evaluationMethodConfiguration->defaultStatuses` (`{1: Pendente, 3: Inabilitado, 10: Habilitado}`), o que garante coerência exata frontend ↔ backend (ver §3.1/§3.2).
+
+**Adendo de implementação (2026-11-26):** o snippet acima já inclui o cast `(int) $status`, que não constava na versão original aprovada — as chaves de `statusLabels` chegam como strings (JSON) e as de `defaultStatuses` como ints; sem o cast, a pré-seleção do status de destino (§3.3) não casaria os valores no Vue quando a fase tem statusLabels configuradas. Registrado no `deviations.md` da rodada.
 
 **`src/modules/EvaluationMethodQualification/components/evaluation-method-qualification--apply/script.js`** (novo)
 Cópia estrutural do Documentary com três adaptações: (a) endpoint `entity.POST('applyEvaluationsQualification', …)`; (b) `valueToString` do resultado consolidado mapeia `'valid' → this.text('Habilitado')`, `'invalid' → this.text('Inabilitado')`, `'0' → this.text('Não avaliada')`, default `value || ''`; (c) `watch`/`computed` sobre `applyData.from` que pré-seleciona o status de destino conforme o mapa `defaultStatusByResult` do jsObject (`valid → 10`, `invalid → 3`), editável pelo gestor. Demais métodos (`parseRegistrationList`, `prepareApplyData`, `resetApplyData`, `changed`, `modalClose`, `reloadPage`) são port verbatim.
