@@ -59,3 +59,9 @@ O gestor aplica o resultado consolidado em massa na habilitação documental dir
 - [ ] O seletor de status de destino lista apenas os status habilitados na Configuração de status da fase, com os rótulos personalizados.
 - [ ] Quem não gerencia a oportunidade não vê o botão e não consegue aplicar pela rota.
 - [ ] Ao final, a tela informa quantas inscrições foram atualizadas.
+
+---
+
+## Adendo 2026-11-26 — ratificação de produto na avaliação de viabilidade (#143)
+
+O seletor de status de destino do modal lista os status habilitados na Configuração de status da fase **excluindo apenas Rascunho** — Pendente permanece selecionável. Decisão do humano em sessão, divergindo da recomendação da análise técnica (que sugeria excluir também Pendente por não fazer sentido como "resultado"). A validação no backend acompanha o mesmo conjunto.
