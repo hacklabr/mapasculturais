@@ -198,6 +198,8 @@ Todos com `RequestFactory->POST(controller_id: 'opportunity', …)` + `login($ad
 
 **Fronteira de arquivos da tarefa única:** `src/modules/EvaluationMethodQualification/Module.php` (alterado) · `src/modules/EvaluationMethodQualification/components/evaluation-method-qualification--apply/{init.php, script.js, texts.php, template.php}` (novos) · `src/modules/EvaluationMethodQualification/layouts/parts/qualification--evaluation-result-apply.php` (novo) · `tests/src/EvaluationMethodApplyResultsByRegistrationTest.php` (alterado). Nada fora dessa fronteira é tocado — o que confirma a aditividade e simplifica o diff para contribuição ao upstream.
 
+**Adendo (2026-11-27):** por decisão do humano no aceite da #145, a fronteira passou a incluir `CHANGELOG.md` (entrada no `[Unreleased]`, convenção de release do repositório — AGENTS.md). Registrado no `deviations.md` da rodada (Desvio 2).
+
 A vinculação de evidências no RF-A13 e o fechamento do `scope.md` são reconciliação da rodada, não tarefa de implementação.
 
 ## 5. Declaração sobre ADR
