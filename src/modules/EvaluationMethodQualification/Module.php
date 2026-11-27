@@ -341,6 +341,122 @@ class Module extends \MapasCulturais\EvaluationMethod
     public function _init()
     {
         $app = App::i();
+
+        $self = $this;
+
+        $app->hook('template(opportunity.registrations.registration-list-actions-entity-table):begin', function($entity){
+            if($em = $entity->evaluationMethodConfiguration){
+                if($em->getEvaluationMethod()->slug == "qualification"){
+                    $this->part('qualification--evaluation-result-apply');
+                }
+            }
+        });
+
+        $app->hook('POST(opportunity.applyEvaluationsQualification)', function() use ($self) {
+            $this->requireAuthentication();
+
+            set_time_limit(0);
+            ini_set('max_execution_time', 0);
+            ini_set('memory_limit', '-1');
+
+            $app = App::i();
+
+            $opp = $this->requestedEntity;
+
+            $type = $opp->evaluationMethodConfiguration->getDefinition()->slug;
+
+            if($type != 'qualification') {
+                $this->errorJson(i::__('Somente para avaliações de habilitação documental'), 400);
+                die;
+            }
+
+            $valid_statuses = array_keys($self->getApplyResultStatuses($opp->evaluationMethodConfiguration));
+
+            if (!is_numeric($this->data['to']) || !in_array((int) $this->data['to'], $valid_statuses, true)) {
+                $this->errorJson(i::__('O status selecionado não está habilitado na configuração de status da fase'), 400);
+                die;
+            }
+
+            $new_status = (int) $this->data['to'];
+
+            $opp->checkPermission('@control');
+
+            if (($this->data['tabSelected'] ?? 'result') === 'registration') {
+                $registrations = $self->findRegistrationIdsForResultApplication(
+                    $opp,
+                    $this->data['registrationNumbers'] ?? [],
+                    $new_status
+                );
+            } else {
+                $apply_status = $this->data['status'] ?? false;
+                $status = $apply_status == 'all' ? 'r.status > 0' : 'r.status = 1';
+
+                $dql = "
+                SELECT
+                    r.id
+                FROM
+                    MapasCulturais\Entities\Registration r
+                WHERE
+                    r.opportunity = :opportunity_id AND
+                    r.consolidatedResult = :consolidated_result AND
+                    r.status <> $new_status AND
+                    $status
+                ";
+                $query = $app->em->createQuery($dql);
+                $query->setParameters([
+                    'opportunity_id' => $opp->id,
+                    'consolidated_result' => $this->data['from']
+                ]);
+                $registrations = $query->getScalarResult();
+            }
+
+            $count = 0;
+            $total = count($registrations);
+
+            // applies the new status to each registration
+            foreach ($registrations as $reg) {
+                $count++;
+                /** @var Registration $registration */
+                $registration_id = is_array($reg) ? $reg['id'] : $reg;
+                $registration = $app->repo('Registration')->find($registration_id);
+                $registration->skipSync = true;
+                $registration->__skipQueuingPCacheRecreation = true;
+
+                $app->log->debug("{$count}/{$total} Alterando status da inscrição {$registration->number} para {$new_status}");
+                switch ($new_status) {
+                    case Registration::STATUS_DRAFT:
+                        $registration->setStatusToDraft();
+                    break;
+                    case Registration::STATUS_INVALID:
+                        $registration->setStatusToInvalid();
+                    break;
+                    case Registration::STATUS_NOTAPPROVED:
+                        $registration->setStatusToNotApproved();
+                    break;
+                    case Registration::STATUS_WAITLIST:
+                        $registration->setStatusToWaitlist();
+                    break;
+                    case Registration::STATUS_APPROVED:
+                        $registration->setStatusToApproved();
+                    break;
+                    default:
+                        $registration->_setStatusTo($new_status);
+                }
+
+                $app->em->clear();
+            }
+
+            if($next_phase = $opp->nextPhase) {
+                $next_phase->enqueueRegistrationSync();
+            }
+
+            if ($total > 0) {
+                $opp->enqueueToPCacheRecreation();
+            }
+
+            $this->finish(sprintf(i::__("Avaliações aplicadas à %s inscrições"), count($registrations)), 200);
+        });
+
         $app->hook('evaluationsReport(qualification).sections', function (Entities\Opportunity $opportunity, &$sections) {
             $i = 0;
             $get_next_color = function ($last = false) use (&$i) {
@@ -440,5 +556,46 @@ class Module extends \MapasCulturais\EvaluationMethod
                 'invalid' => i::__('Inválido')
             ];
         });
+    }
+
+    /**
+     * Returns the statuses that can be applied as destination in the bulk
+     * application of consolidated results, according to the phase status
+     * configuration. Only the draft status is excluded.
+     *
+     * @param EvaluationMethodConfiguration $evaluation_method_configuration
+     * @return array [status => label]
+     */
+    public function getApplyResultStatuses(EvaluationMethodConfiguration $evaluation_method_configuration): array
+    {
+        $status_labels = $evaluation_method_configuration->opportunity->statusLabels ?: $evaluation_method_configuration->defaultStatuses;
+
+        $statuses = [];
+        foreach ($status_labels as $status => $label) {
+            if ((int) $status !== Registration::STATUS_DRAFT) {
+                $statuses[(int) $status] = $label;
+            }
+        }
+
+        return $statuses;
+    }
+
+    public function findConsolidatedResult($opportunity)
+    {
+        $app = App::i();
+
+        $consolidated_results = $app->em->getConnection()->fetchAll("
+        SELECT
+            consolidated_result evaluation,
+            COUNT(*) as num
+        FROM
+            registration
+        WHERE
+            opportunity_id = :opportunity AND
+            status > 0
+        GROUP BY consolidated_result
+        ORDER BY num DESC", ['opportunity' => $opportunity->id]);
+
+        return $consolidated_results;
     }
 }
